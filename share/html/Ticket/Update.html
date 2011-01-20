@@ -57,6 +57,7 @@
 <input type="hidden" class="hidden" name="QuoteTransaction" value="<% $ARGS{QuoteTransaction}||'' %>" />
 <input type="hidden" class="hidden" name="DefaultStatus" value="<% $DefaultStatus ||''%>" />
 <input type="hidden" class="hidden" name="Action" value="<% $ARGS{Action}||'' %>" />
+<input type="hidden" class="hidden" name="Token" value="<% $Token %>" />
 
 <& /Elements/GnuPG/SignEncryptWidget:ShowIssues, self => $gnupg_widget &>
 
@@ -241,11 +242,12 @@ $CanRespond = 1 if ( $TicketObj->CurrentUserHasRight('ReplyToTicket') or
 $CanComment = 1 if ( $TicketObj->CurrentUserHasRight('CommentOnTicket') or
                      $TicketObj->CurrentUserHasRight('ModifyTicket') ); 
 
+$ARGS{'Token'} ||= $Token ||= Digest::MD5::md5_hex( rand(1024) );
 
 # deal with deleting uploaded attachments
 foreach my $key (keys %ARGS) {
     if ($key =~ m/^DeleteAttach-(.+)$/) {
-        delete $session{'Attachments'}{$1};
+        delete $session{'Attachments'}{$Token}{$1};
     }
     $session{'Attachments'} = { %{$session{'Attachments'} || {}} };
 }
@@ -257,15 +259,14 @@ if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
     );
 
     my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    $session{'Attachments'} = {
-        %{$session{'Attachments'} || {}},
-        $file_path => $attachment,
-    };
+    # force session save
+    $session{'Attachments'} = $session{'Attachments'} || {};
+    $session{'Attachments'}{ $Token }{ $file_path } = $attachment;
 }
 
 # delete temporary storage entry to make WebUI clean
-unless (keys %{$session{'Attachments'}} and $ARGS{'UpdateAttach'}) {
-    delete $session{'Attachments'};
+unless (keys %{$session{'Attachments'}{$Token}} and $ARGS{'UpdateAttach'}) {
+    delete $session{'Attachments'}{ $Token };
 }
 
 my $gnupg_widget = $m->comp('/Elements/GnuPG/SignEncryptWidget:new', Arguments => \%ARGS );
@@ -333,4 +334,5 @@ if ( !$checks_failure && !$skip_update && exists $ARGS{SubmitTicket} ) {
 $id => undef
 $Action => undef
 $DefaultStatus => undef
+$Token => undef
 </%ARGS>

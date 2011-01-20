@@ -54,6 +54,7 @@
 
 <form action="<% RT->Config->Get('WebPath') %>/Ticket/Create.html" method="post" enctype="multipart/form-data" name="TicketCreate">
   <input type="hidden" class="hidden" name="id" value="new" />
+  <input type="hidden" class="hidden" name="Token" value="<% $Token %>" />
   
 % $m->callback( CallbackName => 'FormStart', QueueObj => $QueueObj, ARGSRef => \%ARGS );
 
@@ -361,10 +362,12 @@ my $ValidCFs = $m->comp(
     ARGSRef => \%ARGS
 );
 
+$ARGS{'Token'} ||= $Token ||= Digest::MD5::md5_hex( rand(1024) );
+
 # deal with deleting uploaded attachments
 foreach my $key (keys %ARGS) {
     if ($key =~ m/^DeleteAttach-(.+)$/) {
-	delete $session{'Attachments'}{$1};
+	delete $session{'Attachments'}{ $Token }{$1};
     }
     $session{'Attachments'} = { %{$session{'Attachments'} || {}} };
 }
@@ -376,15 +379,13 @@ if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
     );
 
     my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    $session{'Attachments'} = {
-        %{$session{'Attachments'} || {}},
-	$file_path => $attachment,
-    };
+    $session{'Attachments'} = $session{'Attachments'} || {};
+    $session{'Attachments'}{ $Token }{ $file_path } = $attachment;
 }
 
 # delete temporary storage entry to make WebUI clean
-unless (keys %{$session{'Attachments'}} and $ARGS{'id'} eq 'new') {
-    delete $session{'Attachments'};
+unless (keys %{$session{'Attachments'}{$Token}} and $ARGS{'id'} eq 'new') {
+    delete $session{'Attachments'}{$Token};
 }
 
 my $checks_failure = 0;
@@ -447,6 +448,7 @@ PageMenu->child( details => raw_html =>  q[<a href="#details" onclick="return sw
 </%INIT>
 
 <%ARGS>
+$Token => undef
 $DependsOn => undef
 $DependedOnBy => undef
 $MemberOf => undef

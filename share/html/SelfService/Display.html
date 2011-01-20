@@ -101,18 +101,15 @@ my @id = ( ref $id eq 'ARRAY' ) ? @{$id} : ($id);
 my $Ticket = RT::Ticket->new( $session{'CurrentUser'} );
 
 # store the uploaded attachment in session
-if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
-    $session{'Attachments'} = {} unless defined $session{'Attachments'};
-
+if ( $ARGS{'Attach'} ) {    # attachment?
     my $attachment = MakeMIMEEntity(
         AttachmentFieldName => 'Attach'
     );
 
     my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    $session{'Attachments'} = {
-        %{ $session{'Attachments'} || {} },
-        $file_path => $attachment,
-    };
+    # force session save
+    $session{'Attachments'} = $session{'Attachments'} || {};
+    $session{'Attachments'}{ $Token }{ $file_path } = $attachment;
 }
 
 if ( defined ($id[0]) && $id[0] eq 'new' ) {
@@ -134,7 +131,7 @@ if ( defined ($id[0]) && $id[0] eq 'new' ) {
 
 
     ( $Ticket, @results ) =
-    CreateTicket( Attachments => $session{'Attachments'}, %ARGS );
+    CreateTicket( Attachments => $session{'Attachments'}{$Token}, %ARGS );
 
     unless ( $Ticket->id ) {
         $m->comp( 'Error.html', Why => join( "\n", @results ));
@@ -143,8 +140,8 @@ if ( defined ($id[0]) && $id[0] eq 'new' ) {
 
 
         # delete temporary storage entry to make WebUI clean
-        unless ( keys %{ $session{'Attachments'} } and $ARGS{'UpdateAttach'} ) {
-            delete $session{'Attachments'};
+        unless ( keys %{ $session{'Attachments'}{ $Token } } and $ARGS{'UpdateAttach'} ) {
+            delete $session{'Attachments'}{ $Token };
         }
 
     }
@@ -159,24 +156,24 @@ if ( defined ($id[0]) && $id[0] eq 'new' ) {
 
 
     if (
-        $session{'Attachments'}
+        $session{'Attachments'}{ $Token }
         || ( defined $ARGS{'UpdateContent'}
             && $ARGS{'UpdateContent'} ne ''
             && $ARGS{'UpdateContent'} ne "-- \n"
             . $session{'CurrentUser'}->UserObj->Signature )
       )
     {
-        $ARGS{UpdateAttachments} = $session{'Attachments'};
+        $ARGS{UpdateAttachments} = $session{'Attachments'}{ $Token };
     }
     push @results, ProcessUpdateMessage(
         ARGSRef   => \%ARGS,
         TicketObj => $Ticket
     );
-            delete $session{'Attachments'};
+            delete $session{'Attachments'}{ $Token };
 
     # delete temporary storage entry to make WebUI clean
-    unless ( keys %{ $session{'Attachments'} } and $ARGS{'UpdateAttach'} ) {
-        delete $session{'Attachments'};
+    unless ( keys %{ $session{'Attachments'}{ $Token } } and $ARGS{'UpdateAttach'} ) {
+        delete $session{'Attachments'}{ $Token };
     }
 
     my @cfupdates = ProcessObjectCustomFieldUpdates(Object => $Ticket, ARGSRef => \%ARGS);
@@ -228,4 +225,5 @@ if ( defined ($id[0]) && $id[0] eq 'new' ) {
 
 <%ARGS>
 $id => undef
+$Token => ''
 </%ARGS>

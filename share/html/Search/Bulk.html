@@ -228,10 +228,12 @@ map ( $ARGS{$_} =~ /^$/ && ( delete $ARGS{$_} ), keys %ARGS );
 
 my (@results);
 
+$ARGS{'Token'} ||= $Token ||= Digest::MD5::md5_hex( rand(1024) );
+
 # deal with deleting uploaded attachments
 foreach my $key (keys %ARGS) {
     if ($key =~ m/^DeleteAttach-(.+)$/) {
-        delete $session{'Attachments'}{$1};
+        delete $session{'Attachments'}{ $Token }{ $1 };
     }
     $session{'Attachments'} = { %{$session{'Attachments'} || {}} };
 }
@@ -243,15 +245,14 @@ if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
     );
 
     my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    $session{'Attachments'} = {
-        %{$session{'Attachments'} || {}},
-        $file_path => $attachment,
-    };
+    # force session save
+    $session{'Attachments'} = $session{'Attachments'} || {};
+    $session{'Attachments'}{ $Token }{ $file_path } = $attachment;
 }
 
 # delete temporary storage entry to make WebUI clean
-unless (keys %{$session{'Attachments'}} and $ARGS{'UpdateAttach'}) {
-    delete $session{'Attachments'};
+unless (keys %{$session{'Attachments'}{ $Token }} and $ARGS{'UpdateAttach'}) {
+    delete $session{'Attachments'}{ $Token };
 }
 
 $Page ||= 1;
@@ -310,7 +311,8 @@ my $cf_add_keys;
 
 unless ( $ARGS{'AddMoreAttach'} ) {
     # Add session attachments if any to be processed by ProcessUpdateMessage
-    $ARGS{'UpdateAttachments'} = $session{'Attachments'} if ( $session{'Attachments'} );
+    $ARGS{'UpdateAttachments'} = $session{'Attachments'}{ $Token }
+        if $session{'Attachments'}{ $Token };
 
     while ( my $Ticket = $Tickets->Next ) {
         next unless ( $ARGS{ "UpdateTicket" . $Ticket->Id } );
@@ -416,7 +418,7 @@ unless ( $ARGS{'AddMoreAttach'} ) {
     }
 
     # Cleanup WebUI
-    delete $session{'Attachments'};
+    delete $session{'Attachments'}{ $Token };
 }
 
 my $TxnCFs = RT::CustomFields->new( $session{CurrentUser} );
@@ -425,6 +427,7 @@ $TxnCFs->LimitToGlobalOrObjectId( sort keys %queues );
 
 </%INIT>
 <%args>
+$Token => undef
 $Format => undef
 $Page => 1
 $Rows => undef

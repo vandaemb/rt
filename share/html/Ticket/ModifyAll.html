@@ -152,10 +152,12 @@ $CanRespond = 1 if ( $Ticket->CurrentUserHasRight('ReplyToTicket') or
 $CanComment = 1 if ( $Ticket->CurrentUserHasRight('CommentOnTicket') or
                      $Ticket->CurrentUserHasRight('ModifyTicket') );
 
+$ARGS{'Token'} ||= $Token ||= Digest::MD5::md5_hex( rand(1024) );
+
 # deal with deleting uploaded attachments
 foreach my $key (keys %ARGS) {
     if ($key =~ m/^DeleteAttach-(.+)$/) {
-        delete $session{'Attachments'}{$1};
+        delete $session{'Attachments'}{$Token}{$1};
     }
     $session{'Attachments'} = { %{$session{'Attachments'} || {}} };
 }
@@ -167,15 +169,14 @@ if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
     );
 
     my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    $session{'Attachments'} = {
-        %{$session{'Attachments'} || {}},
-        $file_path => $attachment,
-    };
+    # force session save
+    $session{'Attachments'} = $session{'Attachments'} || {};
+    $session{'Attachments'}{ $Token }{ $file_path } = $attachment;
 }
 
 # delete temporary storage entry to make WebUI clean
-unless (keys %{$session{'Attachments'}} and $ARGS{'UpdateAttach'}) {
-    delete $session{'Attachments'};
+unless (keys %{$session{'Attachments'}{$Token}} and $ARGS{'UpdateAttach'}) {
+    delete $session{'Attachments'}{ $Token };
 }
 
 
@@ -203,10 +204,11 @@ unless ($OnlySearchForPeople or $OnlySearchForGroup or $ARGS{'AddMoreAttach'} ) 
     push @results, ProcessTicketDates( TicketObj => $Ticket, ARGSRef => \%ARGS);
     
     # Add session attachments if any to be processed by ProcessUpdateMessage
-    $ARGS{'UpdateAttachments'} = $session{'Attachments'} if ( $session{'Attachments'} );
+    $ARGS{'UpdateAttachments'} = $session{'Attachments'}{ $Token }
+        if $session{'Attachments'}{ $Token };
     push @results, ProcessUpdateMessage( TicketObj => $Ticket, ARGSRef=>\%ARGS );
     # Cleanup WebUI
-    delete $session{'Attachments'};
+    delete $session{'Attachments'}{ $Token };
 
     push @results, ProcessTicketBasics( TicketObj => $Ticket, ARGSRef => \%ARGS );
     push @results, ProcessTicketLinks( TicketObj => $Ticket, ARGSRef => \%ARGS);
@@ -227,6 +229,7 @@ unless ($Ticket->CurrentUserHasRight('ShowTicket')) {
 
 
 <%ARGS>
+$Token => undef
 $OnlySearchForPeople => undef
 $OnlySearchForGroup => undef
 $UserField => undef

@@ -128,7 +128,7 @@ if ($ARGS{'id'} eq 'new') {
     }
 
     ($TicketObj, @Actions) = CreateTicket(
-        Attachments => delete $session{'Attachments'},
+        Attachments => delete $session{'Attachments'}{ $ARGS{'Token'} || '' },
         %ARGS,
     );
     unless ( $TicketObj->CurrentUserHasRight('ShowTicket') ) {
@@ -160,14 +160,13 @@ if ($ARGS{'id'} eq 'new') {
                 ARGSRef => \%ARGS, 
                 Actions => \@Actions);
         
-        $ARGS{UpdateAttachments} = $session{'Attachments'};
+        $ARGS{UpdateAttachments} = delete $session{'Attachments'}{ $ARGS{'Token'} || '' };
         push @Actions,
             ProcessUpdateMessage(
             ARGSRef   => \%ARGS,
             Actions   => \@Actions,
             TicketObj => $TicketObj,
             );
-        delete $session{'Attachments'};
 
         #Process status updates
         push @Actions, ProcessTicketWatchers(ARGSRef => \%ARGS, TicketObj => $TicketObj );
