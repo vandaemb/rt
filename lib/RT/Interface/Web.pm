@@ -1338,18 +1338,21 @@ sub CreateTicket {
         Type    => $ARGS{'ContentType'},
     );
 
-    if ( $ARGS{'Attachments'} ) {
-        my $rv = $MIMEObj->make_multipart;
-        $RT::Logger->error("Couldn't make multipart message")
-            if !$rv || $rv !~ /^(?:DONE|ALREADY)$/;
+    my @attachments;
+    if ( my $tmp = $session{'Attachments'}{ $ARGS{'Token'} || '' } ) {
+        push @attachments, grep $_, values %$tmp;
 
-        foreach ( values %{ $ARGS{'Attachments'} } ) {
-            unless ($_) {
-                $RT::Logger->error("Couldn't add empty attachemnt");
-                next;
-            }
-            $MIMEObj->add_part($_);
-        }
+        delete $session{'Attachments'}{ $ARGS{'Token'} || '' }
+            unless $ARGS{'KeepAttachments'};
+        $session{'Attachment'} = $session{'Attachment'}
+            if @attachments;
+    }
+    if ( $ARGS{'Attachments'} ) {
+        push @attachments, grep $_, values %{ $ARGS{'Attachments'} };
+    }
+    if ( @attachments ) {
+        $MIMEObj->make_multipart;
+        $MIMEObj->add_part( $_ ) foreach @attachments;
     }
 
     foreach my $argument (qw(Encrypt Sign)) {
@@ -1573,9 +1576,21 @@ sub ProcessUpdateMessage {
         );
     }
 
-    if ( $args{ARGSRef}->{'UpdateAttachments'} ) {
+    my @attachments;
+    if ( my $tmp = $session{'Attachments'}{ $args{'ARGSRef'}{'Token'} || '' } ) {
+        push @attachments, grep $_, values %$tmp;
+
+        delete $session{'Attachments'}{ $args{'ARGSRef'}{'Token'} || '' }
+            unless $args{'KeepAttachments'};
+        $session{'Attachment'} = $session{'Attachment'}
+            if @attachments;
+    }
+    if ( $args{ARGSRef}{'UpdateAttachments'} ) {
+        push @attachments, grep $_, values %{ $args{ARGSRef}{'UpdateAttachments'} };
+    }
+    if ( @attachments ) {
         $Message->make_multipart;
-        $Message->add_part($_) foreach values %{ $args{ARGSRef}->{'UpdateAttachments'} };
+        $Message->add_part( $_ ) foreach @attachments;
     }
 
     if ( $args{ARGSRef}->{'AttachTickets'} ) {
