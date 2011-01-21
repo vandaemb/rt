@@ -1677,7 +1677,36 @@ sub _ProcessUpdateMessageRecipients {
     }
 }
 
+sub ProcessAttachments {
+    my %args = (
+        ARGSRef => {},
+        Token   => '',
+        @_
+    );
 
+    my $token = $args{'Token'};
+
+    my $update_session = 0;
+
+    # deal with deleting uploaded attachments
+    if ( my $del = $args{'ARGSRef'}{'DeleteAttach'} ) {
+        delete $session{'Attachments'}{ $token }{ $_ }
+            foreach ref $del? @$del : ($del);
+
+        $update_session = 1;
+    }
+
+    # store the uploaded attachment in session
+    if ( my $new = $args{'ARGSRef'}{'Attach'} ) {            # attachment?
+        my $attachment = MakeMIMEEntity(
+            AttachmentFieldName => 'Attach'
+        );
+
+        my $file_path = Encode::decode_utf8("$new");
+        $session{'Attachments'}{ $token }{ $file_path } = $attachment;
+    }
+    $session{'Attachments'} = $session{'Attachments'} if $update_session;
+}
 
 =head2 MakeMIMEEntity PARAMHASH
 
