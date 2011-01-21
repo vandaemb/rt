@@ -230,30 +230,7 @@ my (@results);
 
 $ARGS{'Token'} ||= $Token ||= Digest::MD5::md5_hex( rand(1024) );
 
-# deal with deleting uploaded attachments
-foreach my $key (keys %ARGS) {
-    if ($key =~ m/^DeleteAttach-(.+)$/) {
-        delete $session{'Attachments'}{ $Token }{ $1 };
-    }
-    $session{'Attachments'} = { %{$session{'Attachments'} || {}} };
-}
-
-# store the uploaded attachment in session
-if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
-    my $attachment = MakeMIMEEntity(
-        AttachmentFieldName => 'Attach'
-    );
-
-    my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    # force session save
-    $session{'Attachments'} = $session{'Attachments'} || {};
-    $session{'Attachments'}{ $Token }{ $file_path } = $attachment;
-}
-
-# delete temporary storage entry to make WebUI clean
-unless (keys %{$session{'Attachments'}{ $Token }} and $ARGS{'UpdateAttach'}) {
-    delete $session{'Attachments'}{ $Token };
-}
+ProcessAttachments( ARGSRef => \%ARGS, Token => $Token );
 
 $Page ||= 1;
 
@@ -310,10 +287,6 @@ my $cf_add_keys;
 @$cf_add_keys = grep { /^Bulk-Add-CustomField/ } keys %ARGS;
 
 unless ( $ARGS{'AddMoreAttach'} ) {
-    # Add session attachments if any to be processed by ProcessUpdateMessage
-    $ARGS{'UpdateAttachments'} = $session{'Attachments'}{ $Token }
-        if $session{'Attachments'}{ $Token };
-
     while ( my $Ticket = $Tickets->Next ) {
         next unless ( $ARGS{ "UpdateTicket" . $Ticket->Id } );
 
@@ -322,9 +295,10 @@ unless ( $ARGS{'AddMoreAttach'} ) {
         $queues{ $Ticket->QueueObj->Id }++;
 
         my @updateresults = ProcessUpdateMessage(
-                TicketObj => $Ticket,
-                ARGSRef   => \%ARGS,
-            );
+            TicketObj       => $Ticket,
+            ARGSRef         => \%ARGS,
+            KeepAttachments => 1,
+        );
 
         #Update the basics.
         my @basicresults =
@@ -417,7 +391,6 @@ unless ( $ARGS{'AddMoreAttach'} ) {
         @results = ( @results, @tempresults );
     }
 
-    # Cleanup WebUI
     delete $session{'Attachments'}{ $Token };
 }
 

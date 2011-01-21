@@ -154,31 +154,7 @@ $CanComment = 1 if ( $Ticket->CurrentUserHasRight('CommentOnTicket') or
 
 $ARGS{'Token'} ||= $Token ||= Digest::MD5::md5_hex( rand(1024) );
 
-# deal with deleting uploaded attachments
-foreach my $key (keys %ARGS) {
-    if ($key =~ m/^DeleteAttach-(.+)$/) {
-        delete $session{'Attachments'}{$Token}{$1};
-    }
-    $session{'Attachments'} = { %{$session{'Attachments'} || {}} };
-}
-
-# store the uploaded attachment in session
-if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
-    my $attachment = MakeMIMEEntity(
-        AttachmentFieldName => 'Attach'
-    );
-
-    my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    # force session save
-    $session{'Attachments'} = $session{'Attachments'} || {};
-    $session{'Attachments'}{ $Token }{ $file_path } = $attachment;
-}
-
-# delete temporary storage entry to make WebUI clean
-unless (keys %{$session{'Attachments'}{$Token}} and $ARGS{'UpdateAttach'}) {
-    delete $session{'Attachments'}{ $Token };
-}
-
+ProcessAttachments( ARGSRef => \%ARGS, Token => $Token );
 
 $m->callback( TicketObj => $Ticket, ARGSRef => \%ARGS );
 my @results;
@@ -202,14 +178,7 @@ unless ($OnlySearchForPeople or $OnlySearchForGroup or $ARGS{'AddMoreAttach'} ) 
     push @results, ProcessTicketWatchers( TicketObj => $Ticket, ARGSRef => \%ARGS);
     push @results, ProcessObjectCustomFieldUpdates( Object => $Ticket, ARGSRef => \%ARGS);
     push @results, ProcessTicketDates( TicketObj => $Ticket, ARGSRef => \%ARGS);
-    
-    # Add session attachments if any to be processed by ProcessUpdateMessage
-    $ARGS{'UpdateAttachments'} = $session{'Attachments'}{ $Token }
-        if $session{'Attachments'}{ $Token };
     push @results, ProcessUpdateMessage( TicketObj => $Ticket, ARGSRef=>\%ARGS );
-    # Cleanup WebUI
-    delete $session{'Attachments'}{ $Token };
-
     push @results, ProcessTicketBasics( TicketObj => $Ticket, ARGSRef => \%ARGS );
     push @results, ProcessTicketLinks( TicketObj => $Ticket, ARGSRef => \%ARGS);
 }

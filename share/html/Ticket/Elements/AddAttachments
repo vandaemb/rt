@@ -50,7 +50,7 @@
 <td>
 <&|/l&>Check box to delete</&><br />
 % foreach my $attach_name ( keys %$attachments ) {
-<input type="checkbox" class="checkbox" name="DeleteAttach-<%$attach_name%>" value="1" /><%$attach_name%><br />
+<input type="checkbox" class="checkbox" name="DeleteAttach" value="<% $attach_name %>" /><% $attach_name %><br />
 % } # end of foreach
 </td>
 </tr>
