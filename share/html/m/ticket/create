@@ -46,6 +46,7 @@
 %#
 %# END BPS TAGGED BLOCK }}}
 <%ARGS>
+$Token => ''
 $QuoteTransaction => undef
 $CloneTicket => undef
 </%ARGS>
@@ -154,31 +155,9 @@ my $ValidCFs = $m->comp(
     ARGSRef => \%ARGS
 );
 
-# deal with deleting uploaded attachments
-foreach my $key (keys %ARGS) {
-    if ($key =~ m/^DeleteAttach-(.+)$/) {
-	delete $session{'Attachments'}{$1};
-    }
-    $session{'Attachments'} = { %{$session{'Attachments'} || {}} };
-}
+$ARGS{'Token'} ||= $Token ||= Digest::MD5::md5_hex( rand(1024) );
 
-# store the uploaded attachment in session
-if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
-    my $attachment = MakeMIMEEntity(
-        AttachmentFieldName => 'Attach'
-    );
-
-    my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    $session{'Attachments'} = {
-        %{$session{'Attachments'} || {}},
-	$file_path => $attachment,
-    };
-}
-
-# delete temporary storage entry to make WebUI clean
-unless (keys %{$session{'Attachments'}} and $ARGS{'id'} eq 'new') {
-    delete $session{'Attachments'};
-}
+ProcessAttachments( ARGSRef => \%ARGS, Token => $Token );
 
 my $checks_failure = 0;
 
@@ -241,6 +220,7 @@ if ((!exists $ARGS{'AddMoreAttach'}) and (defined($ARGS{'id'}) and $ARGS{'id'} e
 <& /Elements/ListActions, actions => \@results  &>
 <form action="<% RT->Config->Get('WebPath') %>/m/ticket/create" method="post" enctype="multipart/form-data" name="TicketCreate" id="ticket-create">
 <input type="hidden" class="hidden" name="id" value="new" />
+<input type="hidden" class="hidden" name="Token" value="<% $Token %>" />
 % $m->callback( CallbackName => 'FormStart', QueueObj => $QueueObj, ARGSRef => \%ARGS );
 % if ($gnupg_widget) {
 <& /Elements/GnuPG/SignEncryptWidget:ShowIssues, self => $gnupg_widget &>
@@ -326,13 +306,14 @@ $showrows->(
 <& /Ticket/Elements/EditCustomFields, %ARGS, QueueObj => $QueueObj &>
 <& /Ticket/Elements/EditTransactionCustomFields, %ARGS, QueueObj => $QueueObj &>
 
-% if (exists $session{'Attachments'}) {
+</%perl>
+% if ( my $attachments = $session{'Attachments'}{'Token'}) {
 
 <%loc("Attached file") %>
 
 <%loc("Check box to delete")%><br />
-% foreach my $attach_name (keys %{$session{'Attachments'}}) {
-<input type="checkbox" class="checkbox" name="DeleteAttach-<%$attach_name%>" value="1" /><%$attach_name%><br />
+% foreach my $attach_name ( keys %$attachments ) {
+<input type="checkbox" class="checkbox" name="DeleteAttach" value="<% $attach_name %>" /><%$attach_name%><br />
 % } # end of foreach
 
 

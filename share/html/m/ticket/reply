@@ -189,34 +189,9 @@ $CanRespond = 1 if ( $t->CurrentUserHasRight('ReplyToTicket') or
 $CanComment = 1 if ( $t->CurrentUserHasRight('CommentOnTicket') or
                      $t->CurrentUserHasRight('ModifyTicket') ); 
 
+$ARGS{'Token'} ||= $Token ||= Digest::MD5::md5_hex( rand(1024) );
 
-# deal with deleting uploaded attachments
-foreach my $key (keys %ARGS) {
-    if ($key =~ m/^DeleteAttach-(.+)$/) {
-        delete $session{'Attachments'}{$1};
-    }
-    $session{'Attachments'} = { %{$session{'Attachments'} || {}} };
-}
-
-# store the uploaded attachment in session
-if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
-    my $attachment = MakeMIMEEntity(
-        AttachmentFieldName => 'Attach'
-    );
-
-    my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    $session{'Attachments'} = {
-        %{$session{'Attachments'} || {}},
-        $file_path => $attachment,
-    };
-}
-
-# delete temporary storage entry to make WebUI clean
-unless ( keys %{ $session{'Attachments'} }
-    && ( exists $ARGS{'AddMoreAttach'} || exists $ARGS{'SubmitTicket'} ) )
-{
-    delete $session{'Attachments'};
-}
+ProcessAttachments( ARGSRef => \%ARGS, Token => $Token );
 
 # check email addresses for RT's
 {
@@ -252,6 +227,7 @@ if ( !$checks_failure && exists $ARGS{SubmitTicket} ) {
 
 <%ARGS>
 $id => undef
+$Token => ''
 $Action => 'Respond'
 $DefaultStatus => undef
 </%ARGS>
