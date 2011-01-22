@@ -100,17 +100,7 @@ my @id = ( ref $id eq 'ARRAY' ) ? @{$id} : ($id);
 
 my $Ticket = RT::Ticket->new( $session{'CurrentUser'} );
 
-# store the uploaded attachment in session
-if ( $ARGS{'Attach'} ) {    # attachment?
-    my $attachment = MakeMIMEEntity(
-        AttachmentFieldName => 'Attach'
-    );
-
-    my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
-    # force session save
-    $session{'Attachments'} = $session{'Attachments'} || {};
-    $session{'Attachments'}{ $Token }{ $file_path } = $attachment;
-}
+ProcessAttachments( Token => $Token, ARGSRef => \%ARGS );
 
 if ( ($id[0]||'') eq 'new' ) {
 
@@ -128,20 +118,12 @@ if ( ($id[0]||'') eq 'new' ) {
     }
 
 
-    ( $Ticket, @results ) =
-    CreateTicket( Attachments => $session{'Attachments'}{$Token}, %ARGS );
+    ( $Ticket, @results ) = CreateTicket( %ARGS );
 
     unless ( $Ticket->id ) {
         $m->comp( 'Error.html', Why => join( "\n", @results ));
         $m->abort();
     }
-
-
-    # delete temporary storage entry to make WebUI clean
-    unless ( keys %{ $session{'Attachments'}{ $Token } } and $ARGS{'UpdateAttach'} ) {
-        delete $session{'Attachments'}{ $Token };
-    }
-
 }
 else {
     unless ( $Ticket->Load( $id[0] ) ) {
@@ -150,43 +132,22 @@ else {
         $m->abort();
     }
 
-    my ( $code, $msg );
-
-
-    if (
-        $session{'Attachments'}{ $Token }
-        || ( defined $ARGS{'UpdateContent'}
-            && $ARGS{'UpdateContent'} ne ''
-            && $ARGS{'UpdateContent'} ne "-- \n"
-            . $session{'CurrentUser'}->UserObj->Signature )
-      )
-    {
-        $ARGS{UpdateAttachments} = $session{'Attachments'}{ $Token };
-    }
     push @results, ProcessUpdateMessage(
         ARGSRef   => \%ARGS,
         TicketObj => $Ticket
     );
-            delete $session{'Attachments'}{ $Token };
-
-    # delete temporary storage entry to make WebUI clean
-    unless ( keys %{ $session{'Attachments'}{ $Token } } and $ARGS{'UpdateAttach'} ) {
-        delete $session{'Attachments'}{ $Token };
-    }
 
     my @cfupdates = ProcessObjectCustomFieldUpdates(Object => $Ticket, ARGSRef => \%ARGS);
     push (@results, @cfupdates);
-
 
     #Update the status
     if (    ( defined $ARGS{'Status'} )
         and $ARGS{'Status'}
         and ( $ARGS{'Status'} ne $Ticket->Status ) )
     {
-        ( $code, $msg ) = $Ticket->SetStatus( $ARGS{'Status'} );
+        my ($code, $msg) = $Ticket->SetStatus( $ARGS{'Status'} );
         push @results, "$msg";
     }
-
 
 }
 
