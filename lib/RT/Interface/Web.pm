@@ -1344,7 +1344,7 @@ sub CreateTicket {
 
         delete $session{'Attachments'}{ $ARGS{'Token'} || '' }
             unless $ARGS{'KeepAttachments'};
-        $session{'Attachment'} = $session{'Attachment'}
+        $session{'Attachments'} = $session{'Attachments'}
             if @attachments;
     }
     if ( $ARGS{'Attachments'} ) {
