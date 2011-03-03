@@ -1523,10 +1523,17 @@ sub ProcessUpdateMessage {
         @_
     );
 
-    if ( $args{ARGSRef}->{'UpdateAttachments'}
-        && !keys %{ $args{ARGSRef}->{'UpdateAttachments'} } )
-    {
-        delete $args{ARGSRef}->{'UpdateAttachments'};
+    my @attachments;
+    if ( my $tmp = $session{'Attachments'}{ $args{'ARGSRef'}{'Token'} || '' } ) {
+        push @attachments, grep $_, values %$tmp;
+
+        delete $session{'Attachments'}{ $args{'ARGSRef'}{'Token'} || '' }
+            unless $args{'KeepAttachments'};
+        $session{'Attachments'} = $session{'Attachments'}
+            if @attachments;
+    }
+    if ( $args{ARGSRef}{'UpdateAttachments'} ) {
+        push @attachments, grep $_, values %{ $args{ARGSRef}{'UpdateAttachments'} };
     }
 
     # Strip the signature
@@ -1540,7 +1547,7 @@ sub ProcessUpdateMessage {
     # If, after stripping the signature, we have no message, move the
     # UpdateTimeWorked into adjusted TimeWorked, so that a later
     # ProcessBasics can deal -- then bail out.
-    if (    not $args{ARGSRef}->{'UpdateAttachments'}
+    if (    not @attachments
         and not length $args{ARGSRef}->{'UpdateContent'} )
     {
         if ( $args{ARGSRef}->{'UpdateTimeWorked'} ) {
@@ -1576,18 +1583,6 @@ sub ProcessUpdateMessage {
         );
     }
 
-    my @attachments;
-    if ( my $tmp = $session{'Attachments'}{ $args{'ARGSRef'}{'Token'} || '' } ) {
-        push @attachments, grep $_, values %$tmp;
-
-        delete $session{'Attachments'}{ $args{'ARGSRef'}{'Token'} || '' }
-            unless $args{'KeepAttachments'};
-        $session{'Attachment'} = $session{'Attachment'}
-            if @attachments;
-    }
-    if ( $args{ARGSRef}{'UpdateAttachments'} ) {
-        push @attachments, grep $_, values %{ $args{ARGSRef}{'UpdateAttachments'} };
-    }
     if ( @attachments ) {
         $Message->make_multipart;
         $Message->add_part( $_ ) foreach @attachments;
