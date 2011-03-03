@@ -1699,6 +1699,8 @@ sub ProcessAttachments {
 
         my $file_path = Encode::decode_utf8("$new");
         $session{'Attachments'}{ $token }{ $file_path } = $attachment;
+
+        $update_session = 1;
     }
     $session{'Attachments'} = $session{'Attachments'} if $update_session;
 }
