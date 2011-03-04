@@ -72,7 +72,7 @@
         </td>
 
     </tr>
-    <& /Ticket/Elements/AddAttachments, %ARGS, TicketObj => $Ticket &>
+    <& /Ticket/Elements/AddAttachments, %ARGS, TicketObj => $Ticket, SingleFile => 1 &>
     <tr><td colspan="2"><& /Ticket/Elements/EditCustomFields,  TicketObj => $Ticket &></td></tr>
 </table>
 <& /Elements/MessageBox, 
