@@ -151,7 +151,8 @@ unless ( $Ticket->CurrentUserHasRight('ShowTicket') ) {
 }
 
 MaybeRedirectForResults(
-    Actions => \@results,
+    Actions   => \@results,
+    Path      => '/SelfService/Display.html',
     Arguments => { 'id' => $Ticket->id },
 );
 
