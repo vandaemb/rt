@@ -1556,7 +1556,7 @@ sub ProcessUpdateMessage {
         return;
     }
 
-    if ( $args{ARGSRef}->{'UpdateSubject'} eq ($args{'TicketObj'}->Subject || '') ) {
+    if ( ($args{ARGSRef}->{'UpdateSubject'}||'') eq ($args{'TicketObj'}->Subject || '') ) {
         $args{ARGSRef}->{'UpdateSubject'} = undef;
     }
 
