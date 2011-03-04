@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 use strict;
 
-use RT::Test tests => 134;
+use RT::Test tests => 145;
 
 use constant LogoFile => $RT::MasonComponentRoot .'/NoAuth/images/bpslogo.png';
 use constant FaviconFile => $RT::MasonComponentRoot .'/NoAuth/images/favicon.png';
@@ -422,3 +422,41 @@ diag "update with attachment";
 
     $m->content_contains('Download favicon.png', 'page has file name');
 }
+
+
+my $m2 = RT::Test::Web->new;
+ok $m2->login, 'second login';
+
+diag "update and create";
+{
+    my $ticket = RT::Test->create_ticket(
+        Queue   => $queue,
+        Subject => 'Attachments test',
+        Content => 'Some content',
+    );
+
+    $m2->goto_ticket( $ticket->id );
+    $m2->follow_link_ok({text => 'Reply'}, "reply to the ticket");
+    $m2->form_name('TicketUpdate');
+    $m2->field('Attach',  LogoFile);
+    $m2->click('AddMoreAttach');
+    is($m2->status, 200, "request successful");
+
+    $m->goto_create_ticket( $queue );
+
+    $m->form_name('TicketCreate');
+    $m->field('Attach',  FaviconFile);
+    $m->field('Subject', 'Attachments test');
+    $m->field('Content', 'Some content');
+    $m->submit;
+    is($m->status, 200, "request successful");
+
+    $m->content_lacks('Download bpslogo.png', 'page has file name');
+    $m->content_contains('Download favicon.png', 'page has file name');
+
+    $m2->form_name('TicketUpdate');
+    $m2->click('SubmitTicket');
+    $m2->content_contains('Download bpslogo.png', 'page has file name');
+    $m2->content_lacks('Download favicon.png', 'page has no file name');
+}
+
