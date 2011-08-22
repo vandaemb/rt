@@ -28,7 +28,7 @@ sub check {
             is( $mode, '0644', $File::Find::name . ' permission is 0644' );
         }
         else {
-            is( $mode, '0754', $File::Find::name . ' permission is 0754' );
+            like( $mode, qr/^075[45]$/, $File::Find::name . ' permission is 0754 or 0755' );
         }
     }
     elsif ( $type eq 'devel' ) {
