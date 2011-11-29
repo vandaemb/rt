@@ -260,6 +260,50 @@ sub Delete {
     return ( $self->SUPER::Delete(@_) );
 }
 
+=head2 UsedBy
+
+Returns L<RT::Scrips> limitted to scrips that use this template. Takes
+into account that template can be overriden in a queue.
+
+=cut
+
+sub UsedBy {
+    my $self = shift;
+
+    my $scrips = RT::Scrips->new( $self->CurrentUser );
+
+    if ( $self->Queue ) {
+        my $global = RT::Template->new( $self->CurrentUser );
+        $global->LoadGlobalTemplate( $self->Name );
+        $scrips->Limit( FIELD => 'Template', VALUE => $self->id );
+        $scrips->Limit( FIELD => 'Template', VALUE => $global->id ) if $global->id;
+        $scrips->Limit( FIELD => 'Queue',    VALUE => $self->Queue );
+        $scrips->Limit( FIELD => 'Queue',    VALUE => 0 );
+    }
+    else {
+        $scrips->Limit( FIELD => 'Template', VALUE => $self->id );
+        my $alias = $scrips->Join(
+            TYPE => 'LEFT',
+            FIELD1 => 'Queue',
+            TABLE2 => 'Templates',
+            FIELD2 => 'Queue',
+        );
+        $scrips->Limit( LEFTJOIN => $alias, FIELD => 'Name', VALUE => $self->Name );
+        $scrips->Limit( LEFTJOIN => $alias, FIELD => 'Queue', OPERATOR => '!=', VALUE => 0 );
+        $scrips->_OpenParen('UsedBy');
+        $scrips->Limit( SUBCLAUSE => 'UsedBy', FIELD => 'Queue', VALUE => 0 );
+        $scrips->Limit(
+            SUBCLAUSE => 'UsedBy',
+            ALIAS => $alias,
+            FIELD => 'id',
+            OPERATOR => 'IS',
+            VALUE => 'NULL',
+        );
+        $scrips->_CloseParen('UsedBy');
+    }
+    return $scrips;
+}
+
 =head2 IsEmpty
 
 Returns true value if content of the template is empty, otherwise
