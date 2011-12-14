@@ -256,6 +256,10 @@ sub HandleRequest {
     # Process per-page authentication callbacks
     $HTML::Mason::Commands::m->callback( %$ARGS, CallbackName => 'Auth', CallbackPage => '/autohandler' );
 
+    if ( $ARGS->{'NotMobile'} ) {
+        $HTML::Mason::Commands::session{'NotMobile'} = 1;
+    }
+
     unless ( _UserLoggedIn() ) {
         _ForceLogout();
 
@@ -277,6 +281,12 @@ sub HandleRequest {
             elsif ( $m->request_comp->path eq '/index.html' ) {
                 my $next = SetNextPage(RT->Config->Get('WebURL'));
                 $m->comp('/NoAuth/Login.html', next => $next, actions => [$msg]);
+                $m->abort;
+            }
+            # Specially handle /m/index.html so that we get a nicer URL
+            elsif ( $m->request_comp->path eq '/m/index.html' ) {
+                my $next = SetNextPage( RT->Config->Get('WebURL') . 'm' );
+                $m->comp('/m/login', next => $next, actions => [$msg]);
                 $m->abort;
             }
             else {
@@ -360,7 +370,13 @@ the next page.  Optionally takes a hash which is dumped into query params.
 
 sub TangentForLogin {
     my $hash  = SetNextPage();
-    my %query = (@_, next => $hash);
+    my %query = (
+        $HTML::Mason::Commands::m->request_comp->path =~ '^/m/'
+        ? ( 'mobile' => 1 )
+        : (),
+        @_,
+        next => $hash
+    );
     my $login = RT->Config->Get('WebURL') . 'NoAuth/Login.html?';
     $login .= $HTML::Mason::Commands::m->comp('/Elements/QueryString', %query);
     Redirect($login);
