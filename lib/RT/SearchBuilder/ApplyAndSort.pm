@@ -117,7 +117,7 @@ sub JoinTargetToThis {
         ALIAS1 => 'main',
         FIELD1 => 'id',
         TABLE2 => $table,
-        FIELD2 => 'CustomField'
+        FIELD2 => $self->RecordClass->TargetField,
     );
     return $alias if $args{'New'};
     return $collection->{ $key } = $alias;
