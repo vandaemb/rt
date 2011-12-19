@@ -19,7 +19,6 @@ sub TargetField {
 sub Create {
     my $self = shift;
     my %args = (
-        Scrip       => 0,
         ObjectId    => 0,
         SortOrder   => undef,
         @_
