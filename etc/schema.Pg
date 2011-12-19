@@ -243,7 +243,7 @@ CREATE TABLE Scrips (
 
 CREATE SEQUENCE objectscrips_id_seq;
 
-CREATE TABLE ObjectCustomFields (
+CREATE TABLE ObjectScrips (
   id INTEGER DEFAULT nextval('objectscrips_id_seq'),
   Scrip integer NOT NULL,
   ObjectId integer NOT NULL,
