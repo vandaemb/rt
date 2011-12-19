@@ -48,9 +48,8 @@ sub Create {
     }
 
     return $self->SUPER::Create(
+        %args,
         $tfield   => $target->id,
-        ObjectId  => $args{'ObjectId'},
-        SortOrder => $args{'SortOrder'},
     );
 }
 
@@ -207,6 +206,24 @@ sub DeleteAll {
     my $list = $self->CollectionClass->new( $self->CurrentUser );
     $list->Limit( FIELD => $field, VALUE => $id );
     $_->Delete foreach @{ $list->ItemsArrayRef };
+}
+
+sub SetDisabledOnAll {
+    my $self = shift;
+    my %args = (@_);
+
+    my $field = $self->TargetField;
+
+    my $id = $args{ $field };
+    $id = $id->id if ref $id;
+    $id ||= $self->TargetObj->id;
+
+    my $list = $self->CollectionClass->new( $self->CurrentUser );
+    $list->Limit( FIELD => $field, VALUE => $id );
+    foreach ( @{ $list->ItemsArrayRef } ) {
+        my ($status, $msg) = $_->SetDisabled( $args{Value} || 0 );
+        return ($status, $msg) unless $status;
+    }
 }
 
 =head2 Sorting scrips applications
