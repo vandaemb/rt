@@ -224,6 +224,7 @@ sub SetDisabledOnAll {
         my ($status, $msg) = $_->SetDisabled( $args{Value} || 0 );
         return ($status, $msg) unless $status;
     }
+    return (1, $self->loc("Disabled all applications") );
 }
 
 =head2 Sorting scrips applications
