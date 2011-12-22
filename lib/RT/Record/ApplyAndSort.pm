@@ -172,7 +172,7 @@ sub _AppliedTo {
         LEFTJOIN => $alias,
         ALIAS    => $alias,
         FIELD    => $field,
-        VALUE    => $self->id,
+        VALUE    => $target->id,
     );
     return ($res, $alias);
 }
