@@ -163,7 +163,7 @@ CREATE TABLE Scrips (
 CREATE TABLE ObjectScrips (
   id INTEGER NOT NULL  ,
   Scrip int NOT NULL  ,
-  Stage varchar(32) NOT NULL DEFAULT 'TranslationCreate' ,
+  Stage varchar(32) NOT NULL DEFAULT 'TransactionCreate' ,
   ObjectId integer NOT NULL,
   SortOrder integer NOT NULL DEFAULT 0  ,
   Disabled int2 NOT NULL DEFAULT 0 ,
