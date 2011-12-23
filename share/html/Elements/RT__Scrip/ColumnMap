@@ -96,7 +96,7 @@ my $COLUMN_MAP = {
 
     AdminURL => {
 	value     => sub {
-            my $queue = $_[0]->AppliedTo->First;
+            my $queue = $_[0]->AddedTo->First;
             my $res = 'Admin';
             if ( $queue ) {
                 $res .= '/Queues/Scrip.html?Queue='. $queue->id .'&';
