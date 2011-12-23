@@ -15,7 +15,7 @@ sub Create {
     my %args = (@_);
     return $self->SUPER::Create(
         map { $_ => $args{ $_ } } qw(
-            Scrip ObjectId
+            Scrip Stage ObjectId
             SortOrder Disabled
             Created Creator
             LastUpdated LastUpdatedBy
@@ -42,6 +42,7 @@ sub Neighbors {
     my %args = @_;
 
     my $res = $self->CollectionClass->new( $self->CurrentUser );
+    $res->Limit( FIELD => 'Stage', VALUE => $args{'Stage'} || $self->Stage );
     return $res;
 }
 
