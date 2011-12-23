@@ -41,8 +41,8 @@ sub Create {
 
     unless ( defined $args{'SortOrder'} ) {
         $args{'SortOrder'} = $self->NextSortOrder(
+            %args,
             $tfield  => $target,
-            ObjectId => $args{'ObjectId'},
         );
     }
     $args{'Disabled'} ||= 0;
@@ -81,7 +81,7 @@ sub Apply {
     }
 
     return $self->Create(
-        $field => $tid, ObjectId => $oid,
+        %args, $field => $tid, ObjectId => $oid,
     );
 }
 
