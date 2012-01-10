@@ -21,3 +21,19 @@ msgstr "Home"
 msgid "Residence"
 msgstr "Home"
 
+#: share/html/Elements/RT__CustomField/ColumnMap:166
+msgid "[Down]"
+msgstr "[Down]"
+
+#: share/html/Elements/RT__CustomField/ColumnMap:163
+msgid "[Up]"
+msgstr "[Up]"
+
+#: NOT FOUND IN SOURCE
+msgid "[no subject]"
+msgstr "[no subject]"
+
+#: share/html/Search/Elements/EditSort:61
+msgid "[none]"
+msgstr "[none]"
+
