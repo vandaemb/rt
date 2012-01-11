@@ -220,10 +220,15 @@ sub SetDisabledOnAll {
 
     my $list = $self->CollectionClass->new( $self->CurrentUser );
     $list->Limit( FIELD => $field, VALUE => $id );
+    $RT::Handle->BeginTransaction;
     foreach ( @{ $list->ItemsArrayRef } ) {
         my ($status, $msg) = $_->SetDisabled( $args{Value} || 0 );
-        return ($status, $msg) unless $status;
+        unless ( $status ) {
+            $RT::Handle->Rollback;
+            return ($status, $msg);
+        }
     }
+    $RT::Handle->Commit;
     return (1, $self->loc("Disabled all applications") );
 }
 
