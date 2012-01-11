@@ -396,6 +396,9 @@ Returns the current value of Disabled.
 
 sub Disabled {
     my $self = shift;
+    # we check only one record as at this moment all applications
+    # should be disabled or none, this method should be dropped when
+    # we implement full functionality
     my $record = RT::ObjectScrip->new( $self->CurrentUser );
     $record->LoadByCols( Scrip => $self->id );
     return $record->Disabled;
