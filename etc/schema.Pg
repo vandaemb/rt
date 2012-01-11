@@ -245,7 +245,7 @@ CREATE SEQUENCE objectscrips_id_seq;
 CREATE TABLE ObjectScrips (
   id INTEGER DEFAULT nextval('objectscrips_id_seq'),
   Scrip integer NOT NULL,
-  Stage varchar(32) NOT NULL DEFAULT 'TrasactionCreate' ,
+  Stage varchar(32) NOT NULL DEFAULT 'TransactionCreate' ,
   ObjectId integer NOT NULL,
   SortOrder integer NOT NULL DEFAULT 0  ,
   Disabled integer NOT NULL DEFAULT 0 ,
