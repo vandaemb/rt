@@ -1,0 +1,23 @@
+<& /Admin/Elements/Header, Title => loc('Select a Scrip') &>
+<& /Elements/Tabs &>
+
+<& /Elements/CollectionList,
+    OrderBy       => 'Description',
+    Order         => 'ASC',
+    Rows          => 50,
+    %ARGS,
+    Collection    => $scrips,
+    Format        => $Format,
+    AllowSorting  => 1,
+&>
+<%args>
+$Format => undef
+</%args>
+<%INIT>
+my $scrips = RT::Scrips->new( $session{'CurrentUser'} );
+$scrips->UnLimit;
+
+$m->callback(CallbackName => 'Massage', Scrips => $scrips);
+
+$Format ||= RT->Config->Get('AdminSearchResultFormat')->{'Scrips'};
+</%INIT>
