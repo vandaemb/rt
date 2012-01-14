@@ -45,19 +45,96 @@
 %# those contributions and any derivatives thereof.
 %#
 %# END BPS TAGGED BLOCK }}}
-<& /Admin/Elements/Header, Title => $title &>
+<& /Admin/Elements/Header, Title => loc("Modify scrip #[_1]", $id) &>
 <& /Elements/Tabs &>
 <& /Elements/ListActions, actions => \@results &>
-<& /Admin/Elements/EditScrip, title => $title,  %ARGS, id => $id &>
 
-<%init>
-my ($id, @results) = $m->comp( '/Admin/Elements/EditScrip:Process', %ARGS );
+<form method="post" action="Modify.html" id="ModifyScrip" name="ModifyScrip">
+<input type="hidden" class="hidden" name="id" value="<% $id %>" />
 
-my ($title);
-if ( $id ) {
-    $title = loc("Modify a scrip that applies to all queues");
+<&| /Widgets/TitleBox, title => loc('Basics') &>
+<table>
+
+<& Elements/EditBasics, %ARGS, Scrip => $scrip &>
+
+% if ( $added_to_any ) {
+<tr><td class="label"><&|/l&>Added</&>:</td><td class="value">\
+% if ( $scrip->IsGlobal ) {
+<% loc('Global') %>
+% } else {
+% my $added_to = $scrip->AddedTo;
+% my $found = 0;
+% while ( my $queue = $added_to->Next ) {
+% $m->out(', ') if $found++;
+<% $queue->Name %>
+% last if $found == 10;
+% }
+% $m->out(', ...') if $found == 10;
+% }
+<td></tr>
+% }
+
+% if ( $added_to_any  ) {
+<tr><td class="label">&nbsp;</td><td>
+<input type="hidden" class="hidden" name="SetEnabled" value="1" />
+<input type="checkbox" class="checkbox" name="Enabled" value="1" <% $EnabledChecked |n%> />
+<label for="Enabled"><&|/l&>Enabled (Unchecking this box disables this scrip)</&></label>
+</td></tr>
+% }
+
+</table>
+</&>
+
+<& /Elements/Submit, Label => loc('Save Changes'), Name => 'Update', Reset => 1 &>
+
+% if ($session{CurrentUser}->HasRight(Object => $RT::System, Right => 'ExecuteCode')) {
+<& Elements/EditCustomCode, %ARGS, Scrip => $scrip &>
+<& /Elements/Submit, Label => loc('Save Changes'), Name => 'Update', Reset => 1 &>
+% }
+
+</form>
+<%ARGS>
+$id     => undef
+$Update => undef
+</%ARGS>
+<%INIT>
+use Data::Dumper;
+print STDERR Dumper \%ARGS;
+
+my $scrip = RT::Scrip->new( $session{'CurrentUser'} );
+$scrip->Load( $id );
+Abort(loc("Couldn't load scrip #[_1]", $id))
+    unless $scrip->id;
+
+my $disabled = $scrip->Disabled;
+my $added_to_any = 0;
+$added_to_any = 1 if defined $disabled;
+
+if ( $Update ) {
+    my @attribs = qw(
+        Description
+        ScripAction ScripCondition Template
+        CustomPrepareCode CustomCommitCode CustomIsApplicableCode
+    );
+    if ( $ARGS{'SetEnabled'} && $added_to_any ) {
+        push @attribs, 'Disabled';
+        $ARGS{"Disabled"} = $ARGS{"Enabled"}? 0 : 1;
+    }
+    my @results = UpdateRecordObject(
+        AttributesRef   => \@attribs,
+        Object          => $scrip,
+        ARGSRef         => \%ARGS
+    );
+    MaybeRedirectForResults(
+        Actions   => \@results,
+        Arguments => { id => $scrip->id },
+    );
 }
-else {
-    $title = loc("Add a scrip which will apply to all queues");
-}
-</%init>
+
+my $EnabledChecked = qq[checked="checked"];
+$EnabledChecked = '' if $disabled;
+
+my @results;
+my ($ok, $msg) = $scrip->CompileCheck;
+push @results, $msg if !$ok;
+</%INIT>

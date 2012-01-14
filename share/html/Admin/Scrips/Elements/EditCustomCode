@@ -1,0 +1,30 @@
+<&| /Widgets/TitleBox, title => loc('User Defined conditions and results') &>
+
+<table>
+<tr><td colspan="2" class="comment">
+<i><&|/l&>(Use these fields when you choose 'User Defined' for a condition or action)</&></i>
+</td></tr>
+
+% while ( my ($method, $desc) = splice @list, 0, 2 ) {
+<tr><td class="labeltop"><% $desc %>:</td><td class="value">
+% my $code = $ARGS{ $method } || $Scrip->$method() || '';
+% my $lines = @{[ $code =~ /\n/gs ]} + 3;
+% $lines = $min_lines if $lines < $min_lines;
+<textarea cols="80" rows="<% $lines %>" name="<% $method %>"><% $code %></textarea>
+</td></tr>
+% }
+
+</table>
+</&>
+<%ARGS>
+$Scrip
+</%ARGS>
+<%INIT>
+my @list = (
+    CustomIsApplicableCode => loc('Custom condition'),
+    CustomPrepareCode      => loc('Custom action preparation code'),
+    CustomCommitCode       => loc('Custom action cleanup code'),
+);
+
+my $min_lines = 10;
+</%INIT>

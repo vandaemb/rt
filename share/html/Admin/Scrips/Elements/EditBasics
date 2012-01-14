@@ -1,0 +1,26 @@
+<tr><td class="label"><&|/l&>Description</&>:</td><td class="value">\
+<input name="Description" \
+    size="60" \
+    value="<% $ARGS{"Description"} || $Scrip->Description || '' %>" />
+</td></tr>
+
+<tr><td class="label"><&|/l&>Condition</&>:</td><td class="value">\
+<& /Admin/Elements/SelectScripCondition,
+    Default => $ARGS{"ScripCondition"} || $Scrip->ConditionObj->Id,
+&></td></tr>
+
+<tr><td class="label"><&|/l&>Action</&>:</td><td class="value">\
+<& /Admin/Elements/SelectScripAction,
+    Default => $ARGS{"ScripAction"} || $Scrip->ActionObj->Id,
+&></td></tr>
+
+<tr><td class="label"><&|/l&>Template</&>:</td><td class="value">\
+<& /Admin/Elements/SelectTemplate,
+    Default => $ARGS{"Template"} || $Scrip->TemplateObj->Id,
+&></td></tr>
+
+<%ARGS>
+$Scrip
+</%ARGS>
+<%INIT>
+</%INIT>

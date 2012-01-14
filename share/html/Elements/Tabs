@@ -149,7 +149,7 @@ my $build_admin_menu = sub {
         if ( $session{'CurrentUser'}->HasRight( Object => RT->System, Right => 'ModifyScrips' ) ) {
             my $cfs = $admin->child( 'scrips' => title => loc('Scrips'), path => '/Admin/Scrips/', description => loc('Manage scrips') );
             $cfs->child( select => title => loc('Select'), path   => "/Admin/Scrips/" );
-            $cfs->child( create => title => loc('Create'), path => "/Admin/Scrips/Modify.html?Create=1" );
+            $cfs->child( create => title => loc('Create'), path => "/Admin/Scrips/Create.html" );
         }
 
         my $admin_global = $admin->child( global => title => loc('Global'), path   => '/Admin/Global/', description => loc('Manage properties and configuration which apply to all queues') );
