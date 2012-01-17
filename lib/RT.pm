@@ -150,6 +150,7 @@ sub Init {
     InitPlugins();
     RT::I18N->Init;
     RT->Config->PostLoadCheck;
+    RT->Config->LockConfig;
 
 }
 

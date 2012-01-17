@@ -958,6 +958,15 @@ sub PostLoadCheck {
     }
 }
 
+sub LockConfig {
+    my $self = shift;
+    my $ref = shift || \%OPTIONS;
+
+    require Hash::Util;
+    Hash::Util::lock_ref_keys( $ref );
+    $self->LockConfig( $_ ) foreach grep ref($_) eq 'HASH', values %$ref;
+}
+
 =head2 Configs
 
 Returns list of config files found in local etc, plugins' etc
