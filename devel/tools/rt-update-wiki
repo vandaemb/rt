@@ -124,7 +124,7 @@ sub update_file {
     my $title = basename($file);
     $title =~ s!\.pod$!!;
 
-    my @categories = 'Core Document';
+    my @categories = ('Official Doc', 'Auto-updated');
     if ( $file =~ m{docs/UPGRADING} ) {
         push @categories, 'Upgrading';
     }
