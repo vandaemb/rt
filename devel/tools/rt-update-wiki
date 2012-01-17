@@ -104,14 +104,6 @@ $mw->login(
     }
 ) or die $mw->{error}->{code} . ': ' . $mw->{error}->{details};
 
-my $banner = <<EOF;
-<div style="color:#a00; text-align:center; margin: 10px;">
-This page is extracted from RT's code base and will be updated automatically,
-please don't edit/move it.
-</div>
-
-EOF
-
 my @files = 'README';
 use File::Find;
 find(
@@ -143,7 +135,7 @@ sub update_file {
         push @categories, 'Customizing';
     }
 
-    my $content = $banner;
+    my $content = "";
     my $raw;
 
     if ( $file =~ /\.pod$/ ) {
