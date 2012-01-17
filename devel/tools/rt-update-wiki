@@ -1,0 +1,204 @@
+#!/usr/bin/env perl
+# BEGIN BPS TAGGED BLOCK {{{
+#
+# COPYRIGHT:
+#
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
+#                                          <sales@bestpractical.com>
+#
+# (Except where explicitly superseded by other copyright notices)
+#
+#
+# LICENSE:
+#
+# This work is made available to you under the terms of Version 2 of
+# the GNU General Public License. A copy of that license should have
+# been provided with this software, but in any event can be snarfed
+# from www.gnu.org.
+#
+# This work is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301 or visit their web page on the internet at
+# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
+#
+#
+# CONTRIBUTION SUBMISSION POLICY:
+#
+# (The following paragraph is not intended to limit the rights granted
+# to you to modify and distribute this software under the terms of
+# the GNU General Public License and is only of importance to you if
+# you choose to contribute your changes and enhancements to the
+# community by submitting them to Best Practical Solutions, LLC.)
+#
+# By intentionally submitting any modifications, corrections or
+# derivatives to this work, or any other work intended for use with
+# Request Tracker, to Best Practical Solutions, LLC, you confirm that
+# you are the copyright holder for those contributions and you grant
+# Best Practical Solutions,  LLC a nonexclusive, worldwide, irrevocable,
+# royalty-free, perpetual, license to use, copy, create derivative
+# works based on those contributions, and sublicense and distribute
+# those contributions and any derivatives thereof.
+#
+# END BPS TAGGED BLOCK }}}
+
+use strict;
+use warnings;
+
+use Getopt::Long;
+use File::Basename 'basename';
+use Pod::Simple::Wiki;
+
+my %opts;
+GetOptions( \%opts, "help|h", "username|u=s", "password|p=s", "api-url|l=s",
+    'rt-root=s' );
+
+if ( $opts{'help'} ) {
+    require Pod::Usage;
+    print Pod::Usage::pod2usage( -verbose => 2 );
+    exit;
+}
+
+$opts{'api-url'} ||= shift @ARGV if @ARGV;
+die "--api-url|-l is not supplied" unless $opts{'api-url'};
+
+if ( $opts{'rt-root'} ) {
+    chdir $opts{'rt-root'};
+}
+
+my $user = $opts{username};
+if ( not defined $user ) {
+    local $| = 1;
+    while ( not length $user ) {
+        print "username: ";
+        $user = <>;
+        chomp $user;
+    }
+}
+
+my $pass = $opts{password};
+if ( not defined $pass ) {
+    require Term::ReadKey;
+    local $| = 1;
+    while ( not length $pass ) {
+        print "password: ";
+        Term::ReadKey::ReadMode('noecho');
+        $pass = Term::ReadKey::ReadLine(0);
+        chomp $pass;
+        print "\n";
+    }
+    Term::ReadKey::ReadMode('restore');
+}
+
+use MediaWiki::API;
+my $mw = MediaWiki::API->new( { api_url => $opts{'api-url'}, } );
+$mw->login(
+    {
+        lgname     => $user,
+        lgpassword => $pass,
+    }
+) or die $mw->{error}->{code} . ': ' . $mw->{error}->{details};
+
+my $banner = <<EOF;
+<div style="color:#a00; text-align:center; margin: 10px;">
+This page is extracted from RT's code base and will be updated automatically,
+please don't edit/move it.
+</div>
+
+EOF
+
+my @files = 'README';
+use File::Find;
+find(
+    sub {
+        return if !-f || /\.(?:dot|svg)/;
+        push @files, $File::Find::name;
+    },
+    'docs'
+);
+
+for my $file (@files) {
+    update_file($file);
+}
+
+sub update_file {
+    my $file = shift;
+
+    my $title = basename($file);
+    $title =~ s!\.pod$!!;
+
+    my @categories = 'Core Document';
+    if ( $file =~ m{docs/UPGRADING} ) {
+        push @categories, 'Upgrading';
+    }
+    elsif ( $file =~ m{docs/extending} ) {
+        push @categories, 'Extending';
+    }
+    elsif ( $file =~ m{docs/customizing} ) {
+        push @categories, 'Customizing';
+    }
+
+    my $content = $banner;
+    my $raw;
+
+    if ( $file =~ /\.pod$/ ) {
+        my $parser = Pod::Simple::Wiki->new('mediawiki');
+        $parser->output_string( \my $wiki );
+        $parser->parse_file($file);
+
+        $content .= $wiki;
+    }
+    else {
+        local $/;
+        open my $fh, '<', $file;
+        $content .= <$fh>;
+        close $fh;
+    }
+
+    for my $category (@categories) {
+        $content .= "[[Category: $category]] ";
+    }
+
+    print "Updating $file\n";
+
+    $mw->edit(
+        {
+            action => 'edit',
+            title  => $title,
+            text   => $content,
+        }
+    ) or die $mw->{error}->{code} . ': ' . $mw->{error}->{details};
+
+    # protect every time we update in case it's unprotected in some way
+    $mw->edit(
+        {
+            action      => 'protect',
+            title       => $title,
+            protections => 'edit=sysop|move=sysop',
+        }
+    ) or die $mw->{error}->{code} . ': ' . $mw->{error}->{details};
+
+}
+
+__END__
+
+=head1 NAME
+
+rt-update-wiki - update doc shipped with RT to wiki pages
+
+=head1 SYNOPSIS
+
+    rt-update-wiki http://wiki.bestpractical.com/api.php
+    rt-update-wiki --api-url http://wiki.bestpractical.com/api.php \
+        --username admin --password secret --rt-root /path/to/rt
+
+=head1 DESCRIPTION
+
+This script is used to update documents shipped with RT to wiki pages.
+We should run it during new version release.
+
