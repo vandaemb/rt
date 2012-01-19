@@ -76,6 +76,9 @@ chomp $tag;
 die "failed to get tag info, please set --rt-root to rt's git repository"
   unless $tag;
 
+my ($version) = $tag =~ /rt-(\d+\.\d+)/;
+die "failed to get version info from tag: $tag" unless $version;
+
 my $user = $opts{username};
 if ( not defined $user ) {
     local $| = 1;
@@ -129,7 +132,7 @@ sub update_file {
     my $title = basename($file);
     $title =~ s!\.pod$!!;
 
-    my @categories = ('Official Doc', 'Auto-updated');
+    my @categories = ('Official Doc', 'Auto-updated', $version );
     if ( $file =~ m{docs/UPGRADING} ) {
         push @categories, 'Upgrading';
     }
