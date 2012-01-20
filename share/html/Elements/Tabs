@@ -156,7 +156,7 @@ my $build_admin_menu = sub {
 
         my $scrips = $admin_global->child( scrips => title => loc('Scrips'), path => '/Admin/Global/Scrips.html', description => loc('Modify scrips which apply to all queues') );
         $scrips->child( select => title => loc('Select'), path => "/Admin/Global/Scrips.html" );
-        $scrips->child( create => title => loc('Create'), path => "/Admin/Global/Scrip.html?Create=1" );
+        $scrips->child( create => title => loc('Create'), path => "/Admin/Scrip/Create.html" );
         my $templates = $admin_global->child( templates => title => loc('Templates'), path => '/Admin/Global/Templates.html', description => loc('Edit system templates') );
         $templates->child( select => title => loc('Select'), path => "/Admin/Global/Templates.html" );
         $templates->child( create => title => loc('Create'), path => "/Admin/Global/Template.html?Create=1" );
@@ -273,7 +273,7 @@ my $build_admin_menu = sub {
             my $scrips = $queue->child( scrips => title => loc('Scrips'), path => "/Admin/Queues/Scrips.html?id=" . $id);
 
             $scrips->child( select => title => loc('Select'), path => "/Admin/Queues/Scrips.html?id=" . $id );
-            $scrips->child( create => title => loc('Create'), path => "/Admin/Queues/Scrip.html?Create=1;Queue=" . $id);
+            $scrips->child( create => title => loc('Create'), path => "/Admin/Scrips/Create.html?Queue=" . $id);
 
             my $ticket_cfs = $queue->child( 'ticket-custom-fields' => title => loc('Ticket Custom Fields'),
                   path => '/Admin/Queues/CustomFields.html?SubType=RT::Ticket&id=' . $id );
