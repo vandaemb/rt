@@ -98,9 +98,6 @@ $id     => undef
 $Update => undef
 </%ARGS>
 <%INIT>
-use Data::Dumper;
-print STDERR Dumper \%ARGS;
-
 my $scrip = RT::Scrip->new( $session{'CurrentUser'} );
 $scrip->Load( $id );
 Abort(loc("Couldn't load scrip #[_1]", $id))
