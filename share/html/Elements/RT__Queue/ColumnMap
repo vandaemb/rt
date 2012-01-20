@@ -84,6 +84,15 @@ my $COLUMN_MAP = {
         title => 'Encrypt', # loc
         value => sub { return $_[0]->Encrypt? $_[0]->loc('yes') : $_[0]->loc('no') },
     },
+    ScripStage => {
+        title => 'Stage', # loc
+        value => sub {
+            my $sid = $_[-1];
+            my $os = RT::ObjectScrip->new( $_[0]->CurrentUser );
+            $os->LoadByCols( Scrip => $_[-1], ObjectId => $_[0]->id );
+            return $os->Stage;
+        },
+    }
 };
 
 foreach my $field (qw(
