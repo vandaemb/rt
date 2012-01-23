@@ -156,7 +156,7 @@ my $build_admin_menu = sub {
 
         my $scrips = $admin_global->child( scrips => title => loc('Scrips'), path => '/Admin/Global/Scrips.html', description => loc('Modify scrips which apply to all queues') );
         $scrips->child( select => title => loc('Select'), path => "/Admin/Global/Scrips.html" );
-        $scrips->child( create => title => loc('Create'), path => "/Admin/Scrip/Create.html" );
+        $scrips->child( create => title => loc('Create'), path => "/Admin/Scrips/Create.html" );
         my $templates = $admin_global->child( templates => title => loc('Templates'), path => '/Admin/Global/Templates.html', description => loc('Edit system templates') );
         $templates->child( select => title => loc('Select'), path => "/Admin/Global/Templates.html" );
         $templates->child( create => title => loc('Create'), path => "/Admin/Global/Template.html?Create=1" );
