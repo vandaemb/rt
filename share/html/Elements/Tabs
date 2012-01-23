@@ -350,12 +350,19 @@ my $build_admin_menu = sub {
         }
     }
 
-    if ( $request_path =~ m{^/Admin/Global/(Scrip|Template)s?\.html} ) {
+    if ( $request_path =~ m{^/Admin/Global/Scrips\.html} ) {
+        my $tabs = PageMenu();
+        $tabs->child( select => title => loc('Select'),
+                      path   => "/Admin/Global/Scrips.html" );
+        $tabs->child( create => title => loc('Create'),
+                      path   => "/Admin/Scrips/Create.html" );
+    }
+
+    if ( $request_path =~ m{^/Admin/Global/(Template)s?\.html} ) {
         my $type = $1;
         my $tabs = PageMenu();
 
         my %labels = (
-            Scrip       => loc('Scrips'),
             Template    => loc('Templates')
         );
 
