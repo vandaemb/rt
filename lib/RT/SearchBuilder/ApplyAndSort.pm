@@ -54,6 +54,7 @@ sub LimitTargetToNotApplied {
         OPERATOR => 'IS',
         VALUE    => 'NULL',
     );
+    return $alias;
 }
 
 =head2 LimitTargetToApplied
@@ -77,6 +78,7 @@ sub LimitTargetToApplied {
         OPERATOR => 'IS NOT',
         VALUE    => 'NULL',
     );
+    return $alias;
 }
 
 sub JoinTargetToApplied {
@@ -84,7 +86,7 @@ sub JoinTargetToApplied {
     my $collection = shift;
     my @ids = @_;
 
-    my $alias = $self->JoinTargetToThis( $collection, New => 1, Left => 1 );
+    my $alias = $self->JoinTargetToThis( $collection, New => 0, Left => 1 );
     return $alias unless @ids;
 
     # XXX: we need different EA in join clause, but DBIx::SB
