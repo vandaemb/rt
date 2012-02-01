@@ -1,8 +1,8 @@
 #!/usr/bin/perl -w
 
 use strict;
+use warnings;
 
-use RT;
 use RT::Test tests => 204;
 
 my $queue = RT::Test->load_or_create_queue( Name => 'General' );
