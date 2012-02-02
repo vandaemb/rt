@@ -2,6 +2,7 @@ use strict; use warnings;
 
 our @Initial = (
     sub {
+        require RT::ObjectScrips;
         foreach my $stage ('TransactionCreate', 'TransactionBatch') {
             my $applications = RT::ObjectScrips->new( RT->SystemUser );
             $applications->Limit( FIELD => 'Stage', VALUE => $stage );
