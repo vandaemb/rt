@@ -10,7 +10,7 @@ our @Initial = (
                 FIELD1 => 'Scrip',
                 TABLE2 => 'Scrips', FIELD2 => 'id'
             );
-            $applications->OrderBy(
+            $applications->OrderByCols(
                 { ALIAS => $alias, FIELD => 'Description', ORDER => 'ASC' },
             );
             my %h; my $top_so = $h{0} = 0;
