@@ -119,7 +119,7 @@ sub DEBUG { warn @_ if $config{debug} >= shift }
 # (XXX: Ask Autrijus how i18n changes these definitions.)
 
 my $name    = '[\w.-]+';
-my $CF_name = '.+';
+my $CF_name = '[^,]+';
 my $field   = '(?i:[a-z][a-z0-9_-]*|C(?:ustom)?F(?:ield)?-'.$CF_name.'|CF\.\{'.$CF_name.'\})';
 my $label   = '[a-zA-Z0-9@_.+-]+';
 my $labels  = "(?:$label,)*$label";
