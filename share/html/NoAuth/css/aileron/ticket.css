@@ -49,6 +49,7 @@ div#ticket-history div.ticket-transaction {
  border-top: 1px solid #ccc;
  padding-bottom: 0.25em;
     position: relative; /* gives us a container for position: absolute */
+ min-height: 2em;
 }
 
 div#ticket-history div.odd {
