@@ -91,16 +91,7 @@
         <& /Ticket/Elements/EditCustomFields, %ARGS, QueueObj => $queue_obj &>
     </td>
 </tr>
-<tr>
-<td class="label">
-%# FIXME: if failed customfields validation, attachement needs to be choosen
-%# again by user.
-<&|/l&>Attach file</&>:
-</td>
-<td class="value">
-<input name="Attach" type="file" />
-</td>
-</tr>
+<& /Ticket/Elements/AddAttachments, %ARGS, QueueObj => $queue_obj &>
 </table>
 <table width="100%">
 <tr>
@@ -128,10 +119,37 @@ my $ValidCFs = $m->comp(
     ARGSRef => \%ARGS
 );
 
+# deal with deleting uploaded attachments
+foreach my $key (keys %ARGS) {
+    if ($key =~ m/^DeleteAttach-(.+)$/) {
+	delete $session{'Attachments'}{$1};
+    }
+    $session{'Attachments'} = { %{$session{'Attachments'} || {}} };
+}
+
+# store the uploaded attachment in session
+if ( defined $ARGS{'Attach'} && length $ARGS{'Attach'} ) { # attachment?
+    my $attachment = MakeMIMEEntity(
+        AttachmentFieldName => 'Attach'
+    );
+
+    my $file_path = Encode::decode_utf8("$ARGS{'Attach'}");
+    $session{'Attachments'} = {
+        %{$session{'Attachments'} || {}},
+	    $file_path => $attachment,
+    };
+}
+
+# delete temporary storage entry to make WebUI clean
+unless (keys %{$session{'Attachments'}} and $ARGS{'id'} eq 'new') {
+    delete $session{'Attachments'};
+}
+
+
 my $skip_create = 0;
 $m->callback( CallbackName => 'BeforeCreate', ARGSRef => \%ARGS, skip_create => \$skip_create, results => \@results );
 
-if ( defined($ARGS{'id'}) and $ARGS{'id'} eq 'new' ) { # new ticket?
+if ( !exists $ARGS{'AddMoreAttach'} and defined($ARGS{'id'}) and $ARGS{'id'} eq 'new' ) { # new ticket?
     if ( $ValidCFs && !$skip_create ) {
         $m->comp('Display.html', %ARGS);
         $RT::Logger->crit("After display call; error is $@");
