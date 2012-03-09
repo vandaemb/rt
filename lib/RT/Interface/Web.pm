@@ -2165,7 +2165,12 @@ sub ProcessTicketReminders {
             Owner   => $args->{'NewReminder-Owner'},
             Due     => $due_obj->ISO
         );
-        push @results, loc("Reminder '[_1]' added", $args->{'NewReminder-Subject'});
+        if ( $add_id ) {
+            push @results, loc("Reminder '[_1]' added", $args->{'NewReminder-Subject'});
+        }
+        else {
+            push @results, $msg;
+        }
     }
     return @results;
 }
