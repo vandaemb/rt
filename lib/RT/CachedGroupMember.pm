@@ -137,7 +137,7 @@ sub Create {
     return $id if $args{'Member'}->id == $args{'Group'}->id;
 
     my $table = $self->Table;
-    unless ( $args{'Disabled'} ) {
+    if ( !$args{'Disabled'} && $args{'Member'}->IsGroup ) {
         # update existing records, in case we activated some paths
         my $query = "
             SELECT CGM3.id FROM
