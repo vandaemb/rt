@@ -106,7 +106,7 @@ sub Create {
         $RT::Logger->debug("$self->Create: bogus Group argument");
     }
 
-    $args{'Disabled'} = ($args{'Group'}->Disabled || $args{'Member'}->Disabled)? 1 : 0;
+    $args{'Disabled'} = $args{'Group'}->Disabled? 1 : 0;
 
     my $id = $self->SUPER::Create(
         GroupId           => $args{'Group'}->Id,
