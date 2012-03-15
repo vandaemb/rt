@@ -668,7 +668,7 @@ This routine finds all the cached group members that are members of this group  
 
     my $cgm = RT::CachedGroupMember->new( $self->CurrentUser );
     $cgm->LoadByCols( MemberId => $self->id, GroupId => $self->id );
-    my ($status) = $item->SetDisabled($val);
+    my ($status) = $cgm->SetDisabled($val);
     unless ( $status ) {
         $RT::Handle->Rollback;
         $RT::Logger->warning("Couldn't disable cached group member #". $cgm->Id);
