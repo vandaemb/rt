@@ -253,6 +253,8 @@ sub Delete {
     );
     return $res unless $res;
 
+    if ( my $m = $self->can('_FlushKeyCache') ) { $m->($self) };
+
     return 1;
 }
 
