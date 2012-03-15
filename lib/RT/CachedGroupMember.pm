@@ -172,14 +172,23 @@ sub Create {
             ON CGM3.GroupId = CGM1.GroupId AND CGM3.MemberId = CGM2.MemberId
         WHERE
             CGM1.MemberId = ? AND (CGM1.GroupId != CGM1.MemberId OR CGM1.MemberId = ?)
-            AND CGM2.GroupId = ? AND (CGM2.GroupId != CGM2.MemberId OR CGM2.GroupId = ?)
             AND CGM3.id IS NULL
     ";
+    push @binds, $args{'Group'}->id, $args{'Group'}->id;
+
+    if ( $args{'Member'}->IsGroup ) {
+        $query .= "
+            AND CGM2.GroupId = ?
+            AND (CGM2.GroupId != CGM2.MemberId OR CGM2.GroupId = ?)
+        ";
+        push @binds, $args{'Member'}->id, $args{'Member'}->id;
+    }
+    else {
+        $query .= " AND CGM2.id = ?";
+        push @binds, $id;
+    }
     $RT::Handle->InsertFromSelect(
-        $table, ['GroupId', 'MemberId', 'Disabled'], $query,
-        @binds,
-        $args{'Group'}->id, $args{'Group'}->id,
-        $args{'Member'}->id, $args{'Member'}->id
+        $table, ['GroupId', 'MemberId', 'Disabled'], $query, @binds,
     );
 
     return $id;
