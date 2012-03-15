@@ -232,19 +232,24 @@ sub Delete {
     );
     return $res unless $res;
 
-    $query = "SELECT CGM1.GroupId, CGM2.MemberId FROM
-        $table CGM1 CROSS JOIN $table CGM2
-        LEFT JOIN $table CGM3
-            ON CGM3.GroupId = CGM1.GroupId AND CGM3.MemberId = CGM2.MemberId
+    $query =
+        "SELECT CGM1.GroupId, CGM2.MemberId,
+            CASE WHEN CGM3.Disabled + CGM4.Disabled > 0 THEN 1 ELSE 0 END
+        FROM $table CGM1 CROSS JOIN $table CGM2
+        JOIN $table CGM3 ON CGM3.GroupId != CGM3.MemberId AND CGM3.GroupId = CGM1.GroupId
+        JOIN $table CGM4 ON CGM4.GroupId != CGM4.MemberId AND CGM4.MemberId = CGM2.MemberId
+            AND CGM3.MemberId = CGM4.GroupId
+        LEFT JOIN $table CGM5
+            ON CGM5.GroupId = CGM1.GroupId AND CGM5.MemberId = CGM2.MemberId
         WHERE
-            CGM1.MemberId = ? AND (CGM1.GroupId != CGM1.MemberId OR CGM1.MemberId = ?)
-            AND CGM2.GroupId = ? AND (CGM2.GroupId != CGM2.MemberId OR CGM2.GroupId = ?)
-            AND CGM3.id IS NULL
+            CGM1.MemberId = ?
+            AND CGM2.GroupId = ?
+            AND CGM5.id IS NULL
     ";
     $res = $RT::Handle->InsertFromSelect(
-        $table, ['GroupId', 'MemberId'], $query,
-        $self->GroupId, $self->GroupId,
-        $self->MemberId, $self->MemberId,
+        $table, ['GroupId', 'MemberId', 'Disabled'], $query,
+        $self->GroupId,
+        $self->MemberId, 
     );
     return $res unless $res;
 
