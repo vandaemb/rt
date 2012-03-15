@@ -435,6 +435,22 @@ Returns (1, 'Status message') on success and (0, 'Error Message') on failure.
 
 =head1 FOR DEVELOPERS
 
+=head2 New structure without Via and ImmediateParent
+
+We have id, GroupId, MemberId, Disabled. In this schema
+we have unique index on GroupId and MemberId that will
+improve selects.
+
+Disabled column is complex as it's reflects all possible
+paths between group and member. If at least one active path
+exists then the record is active.
+
+When a GM record is added we do only two queries: insert
+new CGM records and update Disabled on old paths.
+
+When a GM record is deleted we do it in two steps: delete
+all potential candidates and re-insert them.
+
 =head2 SQL behind maintaining CGM table
 
 =head3 Terminology
@@ -593,7 +609,7 @@ Fun.
 Sadly this query perform much worth comparing to the insert operation. Problem is
 in the select.
 
-=head3 Delete all candidates and re-insert missing
+=head3 Delete all candidates and re-insert missing (our method)
 
 We can delete all candidates (An(G)->De(M)) from CGM table that are not
 real GM records: then insert records once again.
@@ -612,10 +628,16 @@ real GM records: then insert records once again.
 
 Then we can re-insert data back with insert from select described above.
 
+=head4 Disabled column
+
+We delete all (An(G)->De(M)) and then re-insert survivors, so no other
+records except inserted can gain or loose activity. See how we deal with
+it during insert.
+
 =head4 mysql performance
 
 This solution is faster than perviouse variant, 4-5 times slower than
-create operation and behaves linear.
+create operation, behaves linear.
 
 =head3 Recursive delete
 
@@ -678,10 +700,69 @@ do iterative delete like in the last solution. However, this will slowdown
 insert, probably not that much as I suspect we would be able to push new data
 in one query.
 
+=head2 Disabling a (G->G) record
+
+We're interested only in (G->G) records as CGM path is disabled if group
+is disabled. Disabled users don't affect CGM records.
+
+When (G->G) gets Disabled, 1) (G->De(G)) gets Disabled 2) all active
+(An(G)->De(G)) get disabled unless record has an alternative active path.
+
+First can be done without much problem:
+
+    UPDATE CGM SET Disabled => 1 WHERE GroupId = G;
+
+Second part is harder. Finding alternative path is harder and similar to performing
+delete in one query. Instead we can disable all candidates and then re-enable
+required.
+
+Selecting candidates is simple:
+
+    SELECT main.id FROM CachedGroupMembers main
+        JOIN CachedGroupMembers CGM1 ON main.GroupId = CGM1.GroupId AND CGM1.MemberId = G
+        JOIN CachedGroupMembers CGM2 ON main.MemberId = CGM2.MemberId AND CGM2.GroupId = G
+    WHERE main.Disabled = 0;
+
+We can narrow it down. If (G'->G) is disabled where G'~An(G) then activity
+of (G'->M') where M'~De(G) isn't affected by activity of (G->G):
+
+    SELECT main.id FROM CachedGroupMembers main
+        JOIN CachedGroupMembers CGM1 ON main.GroupId = CGM1.GroupId AND CGM1.MemberId = G
+            AND CGM1.Disabled = 0
+        JOIN CachedGroupMembers CGM2 ON main.MemberId = CGM2.MemberId AND CGM2.GroupId = G
+    WHERE main.Disabled = 0;
+
+Now we can re-enable records which still have active paths:
+
+    SELECT main.id FROM CachedGroupMembers main
+        JOIN CachedGroupMembers CGM1 ON main.GroupId = CGM1.GroupId AND CGM1.MemberId = G
+            AND CGM1.Disabled = 0
+        JOIN CachedGroupMembers CGM2 ON main.MemberId = CGM2.MemberId AND CGM2.GroupId = G
+
+        JOIN CachedGroupMembers CGM3 ON CGM3.Disabled = 0 AND main.GroupId = CGM3.GroupID
+        JOIN CachedGroupMembers CGM4 ON CGM4.Disabled = 0 AND main.MemberId = CGM4.MemberId
+            AND CGM4.GroupId = CGM3.MemberId
+
+    WHERE main.Disabled = 1;
+
+Enabling records is much easier, just update all candidates.
+
 =head2 TODO
 
-Update disabled on delete. Update SetDisabled method. Delete all uses of Via and
-IntermidiateParent. Review indexes on all databases. Create upgrade script.
+Update rt-validator and shredder. Review indexes on all databases.
+Create upgrade script.
+
+=head2 What's next
+
+We don't create self-referencing records for users and it complicates
+a few code paths in this module. However, we have ACL equiv groups for
+every user and these groups have (G->G) records and (G->U) record. So
+we have one additional group per user and two CGM records.
+
+We can give user's id to ACL equiv group, so G.id = U.id. In this case
+we get (G, G) pair that is at the same time (U->U) and (G->U) pairs.
+It simplifies code in this module and CGM table smaller by one record
+per user.
 
 =cut
 
