@@ -108,7 +108,21 @@ sub Create {
 
     $args{'Disabled'} = $args{'Group'}->Disabled? 1 : 0;
 
-    my $id = $self->SUPER::Create(
+    $self->LoadByCols(
+        GroupId           => $args{'Group'}->Id,
+        MemberId          => $args{'Member'}->Id,
+    );
+
+    my $id;
+    if ( $id = $self->id ) {
+        if ( $self->Disabled != $args{'Disabled'} && $args{'Disabled'} == 0 ) {
+            my ($status) = $self->SetDisabled( 0 );
+            return undef unless $status;
+        }
+        return $id;
+    }
+
+    ($id) = $self->SUPER::Create(
         GroupId           => $args{'Group'}->Id,
         MemberId          => $args{'Member'}->Id,
         Disabled          => $args{'Disabled'},
