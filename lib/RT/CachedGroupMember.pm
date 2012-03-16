@@ -213,18 +213,37 @@ sub Delete {
     }
 
     my $table = $self->Table;
-    my $query = "
-        SELECT CGM1.id FROM
-            CachedGroupMembers CGM1
-            JOIN CachedGroupMembers CGMA ON CGMA.MemberId = ?
-            JOIN CachedGroupMembers CGMD ON CGMD.GroupId = ?
-            LEFT JOIN GroupMembers GM1
-                ON GM1.GroupId = CGM1.GroupId AND GM1.MemberId = CGM1.MemberId
-        WHERE
-            CGM1.GroupId = CGMA.GroupId AND CGM1.MemberId = CGMD.MemberId
-            AND CGM1.GroupId != CGM1.MemberId
-            AND GM1.id IS NULL 
-    ";
+
+    my $member_is_group = $self->MemberObj->IsGroup;
+
+    my $query;
+    if ( $member_is_group ) {
+        $query = "
+            SELECT CGM1.id FROM
+                CachedGroupMembers CGM1
+                JOIN CachedGroupMembers CGMA ON CGMA.MemberId = ?
+                JOIN CachedGroupMembers CGMD ON CGMD.GroupId = ?
+                LEFT JOIN GroupMembers GM1
+                    ON GM1.GroupId = CGM1.GroupId AND GM1.MemberId = CGM1.MemberId
+            WHERE
+                CGM1.GroupId = CGMA.GroupId AND CGM1.MemberId = CGMD.MemberId
+                AND CGM1.GroupId != CGM1.MemberId
+                AND GM1.id IS NULL
+        ";
+    }
+    else {
+        $query = "
+            SELECT CGM1.id FROM
+                CachedGroupMembers CGM1
+                JOIN CachedGroupMembers CGMA ON CGMA.MemberId = ?
+                LEFT JOIN GroupMembers GM1
+                    ON GM1.GroupId = CGM1.GroupId AND GM1.MemberId = CGM1.MemberId
+            WHERE
+                CGM1.GroupId = CGMA.GroupId
+                AND CGM1.MemberId = ?
+                AND GM1.id IS NULL
+        ";
+    }
 
     my $res = $RT::Handle->DeleteFromSelect(
         $table, $query,
@@ -232,27 +251,76 @@ sub Delete {
     );
     return $res unless $res;
 
-    $query =
-        "SELECT CGM1.GroupId, CGM2.MemberId,
-            CASE WHEN CGM3.Disabled + CGM4.Disabled > 0 THEN 1 ELSE 0 END
-        FROM $table CGM1 CROSS JOIN $table CGM2
-        JOIN $table CGM3 ON CGM3.GroupId != CGM3.MemberId AND CGM3.GroupId = CGM1.GroupId
-        JOIN $table CGM4 ON CGM4.GroupId != CGM4.MemberId AND CGM4.MemberId = CGM2.MemberId
-            AND CGM3.MemberId = CGM4.GroupId
-        LEFT JOIN $table CGM5
-            ON CGM5.GroupId = CGM1.GroupId AND CGM5.MemberId = CGM2.MemberId
-        WHERE
-            CGM1.MemberId = ?
-            AND CGM2.GroupId = ?
-            AND CGM5.id IS NULL
-    ";
+    my @binds;
+    if ( $member_is_group ) {
+        $query =
+            "SELECT DISTINCT CGM1.GroupId, CGM2.MemberId, 1
+            FROM $table CGM1 CROSS JOIN $table CGM2
+            JOIN $table CGM3 ON CGM3.GroupId != CGM3.MemberId AND CGM3.GroupId = CGM1.GroupId
+            JOIN $table CGM4 ON CGM4.GroupId != CGM4.MemberId AND CGM4.MemberId = CGM2.MemberId
+                AND CGM3.MemberId = CGM4.GroupId
+            LEFT JOIN $table CGM5
+                ON CGM5.GroupId = CGM1.GroupId AND CGM5.MemberId = CGM2.MemberId
+            WHERE
+                CGM1.MemberId = ?
+                AND CGM2.GroupId = ?
+                AND CGM5.id IS NULL
+        ";
+        @binds = ($self->GroupId, $self->MemberId);
+
+    } else {
+        $query =
+            "SELECT DISTINCT CGM1.GroupId, ?, 1
+            FROM $table CGM1
+            JOIN $table CGM3 ON CGM3.GroupId != CGM3.MemberId AND CGM3.GroupId = CGM1.GroupId
+            JOIN $table CGM4 ON CGM4.GroupId != CGM4.MemberId AND CGM4.MemberId = ?
+                AND CGM3.MemberId = CGM4.GroupId
+            LEFT JOIN $table CGM5
+                ON CGM5.GroupId = CGM1.GroupId AND CGM5.MemberId = ?
+            WHERE
+                CGM1.MemberId = ?
+                AND CGM5.id IS NULL
+        ";
+        @binds = (
+            ($self->MemberId)x3,
+            $self->GroupId,
+        );
+    }
+
     $res = $RT::Handle->InsertFromSelect(
-        $table, ['GroupId', 'MemberId', 'Disabled'], $query,
-        $self->GroupId,
-        $self->MemberId, 
+        $table, ['GroupId', 'MemberId', 'Disabled'], $query, @binds
     );
     return $res unless $res;
 
+    if ( $res > 1 && $member_is_group ) {
+        $query =
+            "SELECT main.id
+            FROM $table main
+            JOIN $table CGMA ON CGMA.MemberId = ?
+            JOIN $table CGMD ON CGMD.GroupId = ?
+
+            JOIN $table CGM3 ON CGM3.GroupId != CGM3.MemberId
+                AND CGM3.GroupId = main.GroupId
+                AND CGM3.Disabled = 0
+            JOIN $table CGM4 ON CGM4.GroupId != CGM4.MemberId
+                AND CGM4.MemberId = main.MemberId
+                AND CGM4.Disabled = 0
+                AND CGM3.MemberId = CGM4.GroupId
+            WHERE
+                main.GroupId = CGMA.GroupId
+                AND main.MemberId = CGMD.MemberId
+                AND main.Disabled = 1
+        ";
+        $RT::Handle->SimpleUpdateFromSelect(
+            $table, { Disabled => 0 }, $query,
+            $self->GroupId,
+            $self->MemberId,
+        );
+        return $res unless $res;
+    }
+    elsif ( $res > 1 ) {
+        
+    }
     if ( my $m = $self->can('_FlushKeyCache') ) { $m->($self) };
 
     return 1;
