@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 
-use RT::Test nodata => 1, tests => 38;
+use RT::Test nodata => 1, tests => 376;
 
 my %GROUP;
 foreach my $name (qw(A B C D)) {
@@ -16,6 +16,8 @@ foreach my $name (qw(a b c d)) {
     my ($status, $msg) = $user->Create( Name => $name );
     ok $status, "created an user '$name'" or diag "error: $msg";
 }
+
+my %DISABLED;
 
 {
     add_members_ok( A => qw(a b c) );
@@ -62,8 +64,65 @@ foreach my $name (qw(a b c d)) {
     random_delete( A => [qw(B C)], B => [qw(d)], C => [qw(d)] );
 }
 
-for (1..5) {
+for (1..3) {
     random_delete( random_build() );
+}
+
+{
+# variations of ruby:
+#   A
+# / | \
+# B | C
+# \ | /
+#   D
+    add_members_ok( A => qw(B C) );
+    add_members_ok( B => qw(D) );
+    add_members_ok( C => qw(D) );
+
+    # disable B with A -> C -> D active alternative for A->D
+    disable_group_ok( 'B' );
+    check_cgm_activity( A => [qw(B C)], B => [qw(D)], C => [qw(D)] );
+
+    # disable C, no more active alternative for A->D
+    disable_group_ok( 'C' );
+    check_cgm_activity( A => [qw(B C)], B => [qw(D)], C => [qw(D)] );
+
+    # add direct active (A->D) link
+    add_members_ok( A => qw(D) );
+    check_cgm_activity( A => [qw(B C D)], B => [qw(D)], C => [qw(D)] );
+
+    # delete active (A->D) when all alternative are disabled
+    del_members_ok( A => 'D' );
+    check_cgm_activity( A => [qw(B C)], B => [qw(D)], C => [qw(D)] );
+
+    # enable C that enables A->D
+    enable_group_ok( 'C' );
+    check_cgm_activity( A => [qw(B C)], B => [qw(D)], C => [qw(D)] );
+
+    # delete (A->B) and add back, B is disabled
+    del_members_ok( A => 'B' );
+    add_members_ok( A => qw(B) );
+    check_cgm_activity( A => [qw(B C)], B => [qw(D)], C => [qw(D)] );
+
+    random_delete( A => [qw(B C)], B => [qw(D)], C => [qw(D)] );
+
+    enable_group_ok( 'B' );
+}
+
+{
+# variations of triangle
+#   A
+# /   \
+# B -> C
+    add_members_ok( A => qw(B C) );
+    disable_group_ok( 'B' );
+
+    # add member to disabled group
+    add_members_ok( B => qw(C) );
+    check_cgm_activity( A => [qw(B C)], B => [qw(C)] );
+
+    random_delete( A => [qw(B C)], B => [qw(C)] );
+    enable_group_ok( 'B' );
 }
 
 sub random_build {
@@ -71,7 +130,7 @@ sub random_build {
 
     my @groups = keys %GROUP;
 
-    my $i = 12;
+    my $i = 9;
     while ( $i-- ) {
         REPICK:
         my $g = $groups[int rand @groups];
@@ -97,7 +156,6 @@ sub random_build {
         push @{ $GM{ $g }||=[] }, $m;
         unless ( check_membership( %GM ) ) {
             Test::More::diag("were adding $error") unless $ENV{'TEST_VERBOSE'};
-            exit 1;
         }
 
         %RCGM = reverse_gm( gm_to_cgm(%GM) );
@@ -140,6 +198,7 @@ sub check_membership {
     my $res = _check_membership( HasMember => %GM );
     my %CGM = gm_to_cgm(%GM);
     $res &&= _check_membership( HasMemberRecursively => %CGM );
+    $res &&= check_cgm_activity( %GM );
     return $res;
 }
 
@@ -157,6 +216,22 @@ sub gm_to_cgm {
     return %CGM;
 }
 
+sub gm_to_activity {
+    my %GM = @_;
+
+    my $flat;
+    $flat = sub {
+        return if $DISABLED{ $_[0] };
+        my @self_ref = $GROUP{$_[0]} && !$DISABLED{$_[0]}? ($_[0]) : ();
+        return @self_ref unless $GM{ $_[0] };
+        return @self_ref, map { $_, $flat->($_) } @{ $GM{ $_[0] } };
+    };
+
+    my %CGM;
+    $CGM{ $_ } = [ $flat->( $_ ) ] foreach keys %GROUP;
+    return %CGM;
+}
+
 sub reverse_gm {
     my %GM = @_;
     my %res = @_;
@@ -165,6 +240,43 @@ sub reverse_gm {
         push @{ $res{$_}||=[] }, $g foreach @{ $GM{ $g } };
     }
     return %res;
+}
+
+sub check_cgm_activity {
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+    my %GM = @_;
+
+    my $id_to_name = sub {
+        my $p = RT::Principal->new( RT->SystemUser );
+        $p->Load($_[0]);
+        $p->Object->Name;
+    };
+
+    my $data = $RT::Handle->dbh->selectall_arrayref(
+        "SELECT GroupId, MemberId FROM CachedGroupMembers WHERE Disabled = 0"
+        .' AND GroupId IN ('. join( ', ', map $_->id, values %GROUP, values %USER ) .')'
+        .' AND MemberId IN ('. join( ', ', map $_->id, values %GROUP, values %USER ) .')'
+    );
+
+    my %got;
+    foreach (@$data) {
+        my ($g, $m) = (map $id_to_name->($_), @$_);
+        push @{ $got{$g} ||= []}, $m;
+    }
+
+    my %expected = gm_to_activity( %GM );
+
+    foreach my $hash (\%got, \%expected) {
+        foreach ( values %$hash ) {
+            my %seen;
+            @$_ = sort grep !$seen{$_}++, @$_;
+        }
+        delete $hash->{$_} foreach grep !@{$hash->{$_}}, keys %$hash;
+    }
+    use Data::Dumper;
+    is_deeply(\%got, \%expected, 'activity of the records is correct')
+        or diag Dumper( \%got, \%expected );
 }
 
 sub _check_membership {
@@ -256,6 +368,19 @@ sub dump_gm {
     diag "De($M): ". join ',', map "$_ (GM#". $gm_id->($M, $_) .")", $des->($M);
     diag "(An($G), De($M)): ";
     $anc_des_pairs->($G, $M);
+}
+
+sub disable_group_ok {
+    my $g = shift;
+    my ($status, $msg) = $GROUP{ $g }->SetDisabled(1);
+    ok $status, "disabled group '$g'" or diag "error: $msg";
+    $DISABLED{$g} = $GROUP{ $g }->Disabled;
+}
+sub enable_group_ok {
+    my $g = shift;
+    my ($status, $msg) = $GROUP{ $g }->SetDisabled(0);
+    ok $status, "enabled group '$g'" or diag "error: $msg";
+    $DISABLED{$g} = $GROUP{ $g }->Disabled;
 }
 
 sub substract_list {
