@@ -292,7 +292,7 @@ sub Delete {
     );
     return $res unless $res;
 
-    if ( $res > 1 && $member_is_group ) {
+    if ( $res > 0 && $member_is_group ) {
         $query =
             "SELECT main.id
             FROM $table main
@@ -311,16 +311,34 @@ sub Delete {
                 AND main.MemberId = CGMD.MemberId
                 AND main.Disabled = 1
         ";
-        $RT::Handle->SimpleUpdateFromSelect(
-            $table, { Disabled => 0 }, $query,
-            $self->GroupId,
-            $self->MemberId,
-        );
-        return $res unless $res;
     }
-    elsif ( $res > 1 ) {
-        
+    elsif ( $res > 0 ) {
+        $query =
+            "SELECT main.id
+            FROM $table main
+            JOIN $table CGMA ON CGMA.MemberId = ?
+
+            JOIN $table CGM3 ON CGM3.GroupId != CGM3.MemberId
+                AND CGM3.GroupId = main.GroupId
+                AND CGM3.Disabled = 0
+            JOIN $table CGM4 ON CGM4.GroupId != CGM4.MemberId
+                AND CGM4.MemberId = main.MemberId
+                AND CGM4.Disabled = 0
+                AND CGM3.MemberId = CGM4.GroupId
+            WHERE
+                main.GroupId = CGMA.GroupId
+                AND main.MemberId = ?
+                AND main.Disabled = 1
+        ";
     }
+
+    $res = $RT::Handle->SimpleUpdateFromSelect(
+        $table, { Disabled => 0 }, $query,
+        $self->GroupId,
+        $self->MemberId,
+    ) if $res > 0;
+    return $res unless $res;
+
     if ( my $m = $self->can('_FlushKeyCache') ) { $m->($self) };
 
     return 1;
@@ -349,35 +367,36 @@ sub SetDisabled {
         }
 
         my $query = "SELECT main.id FROM CachedGroupMembers main
-            JOIN CachedGroupMembers CGM1 ON main.GroupId = CGM1.GroupId
-                AND CGM1.MemberId = ?
-                AND CGM1.Disabled = 0
-            JOIN CachedGroupMembers CGM2 ON main.MemberId = CGM2.MemberId
-                AND CGM2.GroupId = ?
-            WHERE main.Disabled = 0";
+            WHERE main.Disabled = 0 AND main.GroupId = ?";
 
         $RT::Handle->SimpleUpdateFromSelect(
             $self->Table, { Disabled => 1 }, $query,
-            ($self->GroupId)x2,
+            $self->GroupId,
         ) or return undef;
 
         $query = "SELECT main.id FROM CachedGroupMembers main
             JOIN CachedGroupMembers CGM1 ON main.GroupId = CGM1.GroupId
                 AND CGM1.MemberId = ?
-                AND CGM1.Disabled = 0
             JOIN CachedGroupMembers CGM2 ON main.MemberId = CGM2.MemberId
-                AND CGM2.GroupId = ?
+                AND CGM2.GroupId = ? AND CGM2.GroupId != CGM2.MemberId
 
-            JOIN CachedGroupMembers CGM3 ON CGM3.Disabled = 0
-                AND main.GroupId = CGM3.GroupID
-            JOIN CachedGroupMembers CGM4 ON CGM4.Disabled = 0
-                AND main.MemberId = CGM4.MemberId
-                AND CGM4.GroupId = CGM3.MemberId
+            WHERE main.Disabled = 0
+                AND NOT EXISTS (
+                    SELECT CGM3.id
+                    FROM CachedGroupMembers CGM3, CachedGroupMembers CGM4
+                    WHERE CGM3.Disabled = 0 AND CGM4.Disabled = 0
+                        AND CGM3.GroupId = main.GroupId
+                        AND CGM3.MemberId = CGM4.GroupId
+                        AND CGM4.MemberId = main.MemberId
+                        AND CGM3.id != main.id
+                        AND CGM4.id != main.id
+                )
+        ";
 
-            WHERE main.Disabled = 1";
+
 
         $RT::Handle->SimpleUpdateFromSelect(
-            $self->Table, { Disabled => 0 }, $query,
+            $self->Table, { Disabled => 1 }, $query,
             ($self->GroupId)x2,
         ) or return undef;
     }
@@ -389,18 +408,19 @@ sub SetDisabled {
             );
             return $status;
         }
+        REDO:
         my $query = "SELECT main.id FROM CachedGroupMembers main
             JOIN CachedGroupMembers CGM1 ON main.GroupId = CGM1.GroupId
                 AND CGM1.MemberId = ?
-                AND CGM1.Disabled = 0
             JOIN CachedGroupMembers CGM2 ON main.MemberId = CGM2.MemberId
                 AND CGM2.GroupId = ?
             WHERE main.Disabled = 1";
 
-        $RT::Handle->SimpleUpdateFromSelect(
+        my $res = $RT::Handle->SimpleUpdateFromSelect(
             $self->Table, { Disabled => 0 }, $query,
             $self->GroupId, $self->MemberId
         ) or return undef;
+        goto REDO if $res > 0;
     }
     if ( my $m = $self->can('_FlushKeyCache') ) { $m->($self) };
     return (1);
