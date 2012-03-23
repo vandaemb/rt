@@ -66,6 +66,7 @@ my $has_reminders = $count_tickets->Count;
 
 # We've made changes, let's reload our search
 my $reminder_collection = $count_reminders->Collection;
+my $visible = 0;
 </%init>
 <input type="hidden" class="hidden" name="id" value="<% $Ticket->id %>" />
 <input type="hidden" class="hidden" name="update-reminders" value="1" />
@@ -82,7 +83,6 @@ my $reminder_collection = $count_reminders->Collection;
 % }
 </tr>
 % my $i = 0;
-% my $visible = 0;
 % while ( my $reminder = $reminder_collection->Next ) {
 % $i++;
 % if ( $reminder->Status eq 'resolved' && !$ShowCompleted ) {
@@ -115,6 +115,7 @@ my $reminder_collection = $count_reminders->Collection;
 <&|/l&>New reminder:</&>
 <& SELF:NewReminder, Ticket => $Ticket &>
 % }
+% return($Ticket->Status ne "deleted" or $visible);
 <%method NewReminder>
 <%args>
 $Ticket
