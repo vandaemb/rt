@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -118,11 +118,7 @@ sub callback {
     unless ( $callbacks ) {
         $callbacks = [];
         my $path  = "/Callbacks/*$page/$name";
-        my @roots = map $_->[1],
-                        $HTML::Mason::VERSION <= 1.28
-                            ? $self->interp->resolver->comp_root_array
-                            : $self->interp->comp_root_array;
-
+        my @roots = RT::Interface::Web->ComponentRoots;
         my %seen;
         @$callbacks = (
             grep defined && length,

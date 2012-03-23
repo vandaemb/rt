@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -52,23 +52,19 @@ use strict;
 use warnings;
 
 use base qw(Test::WWW::Mechanize);
+use Scalar::Util qw(weaken);
 
-require RT::Test;
+BEGIN { require RT::Test; }
 require Test::More;
+
+my $instance;
 
 sub new {
     my ($class, @args) = @_;
 
-    if ($class->isa('Test::WWW::Mechanize::PSGI')) {
-        require RT::Interface::Web::Handler;
-        my $app = RT::Interface::Web::Handler->PSGIApp;
-        require Plack::Middleware::Test::StashWarnings;
-        $app = Plack::Middleware::Test::StashWarnings->wrap($app);
-
-        push @args, app => $app;
-    }
-
-    my $self = $class->SUPER::new(@args);
+    push @args, app => $RT::Test::TEST_APP if $RT::Test::TEST_APP;
+    my $self = $instance = $class->SUPER::new(@args);
+    weaken $instance;
     $self->cookie_jar(HTTP::Cookies->new);
 
     return $self;
@@ -183,11 +179,17 @@ sub get_warnings {
     my $self = shift;
     local $Test::Builder::Level = $Test::Builder::Level + 1;
 
-    return unless $self->get_ok('/__test_warnings');
+    # We clone here so that when we fetch warnings, we don't disrupt the state
+    # of the test's mech. If we reuse the original mech then you can't
+    # test warnings immediately after fetching page XYZ, then fill out
+    # forms on XYZ. This is because the most recently fetched page has changed
+    # from XYZ to /__test_warnings, which has no form.
+    my $clone = $self->clone;
+    return unless $clone->get_ok('/__test_warnings');
 
     use Storable 'thaw';
 
-    my @warnings = @{ thaw $self->content };
+    my @warnings = @{ thaw $clone->content };
     return @warnings;
 }
 
@@ -341,11 +343,44 @@ sub custom_field_input {
     return $res;
 }
 
+sub check_links {
+    my $self = shift;
+    my %args = @_;
+
+    my %has = map {$_ => 1} @{ $args{'has'} };
+    my %has_no = map {$_ => 1} @{ $args{'has_no'} };
+
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+    my @found;
+
+    my @links = $self->followable_links;
+    foreach my $text ( grep defined && length, map $_->text, @links ) {
+        push @found, $text if $has_no{ $text };
+        delete $has{ $text };
+    }
+    if ( @found || keys %has ) {
+        Test::More::ok( 0, "expected links" );
+        Test::More::diag( "didn't expect, but found: ". join ', ', map "'$_'", @found )
+            if @found;
+        Test::More::diag( "didn't find, but expected: ". join ', ', map "'$_'", keys %has )
+            if keys %has;
+        return 0;
+    }
+    return Test::More::ok( 1, "expected links" );
+}
+
 sub DESTROY {
     my $self = shift;
     if ( !$RT::Test::Web::DESTROY++ ) {
         $self->no_warnings_ok;
     }
+}
+
+END {
+    return unless $instance;
+    return if RT::Test->builder->{Original_Pid} != $$;
+    $instance->no_warnings_ok if !$RT::Test::Web::DESTROY++;
 }
 
 1;

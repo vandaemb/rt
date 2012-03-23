@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -288,6 +288,21 @@ sub CheckCompatibility {
         }
     }
     return (1)
+}
+
+sub CheckSphinxSE {
+    my $self = shift;
+
+    my $dbh = $RT::Handle->dbh;
+    local $dbh->{'RaiseError'} = 0;
+    local $dbh->{'PrintError'} = 0;
+    my $has = ($dbh->selectrow_array("show variables like 'have_sphinx'"))[1];
+    $has ||= ($dbh->selectrow_array(
+        "select 'yes' from INFORMATION_SCHEMA.PLUGINS where PLUGIN_NAME = 'sphinx' AND PLUGIN_STATUS='active'"
+    ))[0];
+
+    return 0 unless lc($has||'') eq "yes";
+    return 1;
 }
 
 =head2 Database maintanance
@@ -729,6 +744,10 @@ sub InsertData {
     my $self     = shift;
     my $datafile = shift;
     my $root_password = shift;
+    my %args     = (
+        disconnect_after => 1,
+        @_
+    );
 
     # Slurp in stuff to insert from the datafile. Possible things to go in here:-
     our (@Groups, @Users, @ACL, @Queues, @ScripActions, @ScripConditions,
@@ -875,6 +894,22 @@ sub InsertData {
                 next;
             }
 
+            if ( $item->{'BasedOn'} ) {
+                my $basedon = RT::CustomField->new($RT::SystemUser);
+                my ($ok, $msg ) = $basedon->LoadByCols( Name => $item->{'BasedOn'},
+                                                        LookupType => $new_entry->LookupType );
+                if ($ok) {
+                    ($ok, $msg) = $new_entry->SetBasedOn( $basedon );
+                    if ($ok) {
+                        $RT::Logger->debug("Added BasedOn $item->{BasedOn}: $msg");
+                    } else {
+                        $RT::Logger->error("Failed to add basedOn $item->{BasedOn}: $msg");
+                    }
+                } else {
+                    $RT::Logger->error("Unable to load $item->{BasedOn} as a $item->{LookupType} CF.  Skipping BasedOn");
+                }
+            }
+
             foreach my $value ( @{$values} ) {
                 my ( $return, $msg ) = $new_entry->AddValue(%$value);
                 $RT::Logger->error( $msg ) unless $return;
@@ -942,9 +977,17 @@ sub InsertData {
                 } else {
                   $princ->Load( $item->{'GroupId'} );
                 }
+                unless ( $princ->Id ) {
+                    RT->Logger->error("Unable to load Group: GroupDomain => $item->{GroupDomain}, GroupId => $item->{GroupId}, Queue => $item->{Queue}");
+                    next;
+                }
             } else {
                 $princ = RT::User->new(RT->SystemUser);
-                $princ->Load( $item->{'UserId'} );
+                my ($ok, $msg) = $princ->Load( $item->{'UserId'} );
+                unless ( $ok ) {
+                    RT->Logger->error("Unable to load user: $item->{UserId} : $msg");
+                    next;
+                }
             }
 
             # Grant it
@@ -1033,7 +1076,7 @@ sub InsertData {
         $RT::Logger->debug("done.");
     }
     if ( @Attributes ) {
-        $RT::Logger->debug("Creating predefined searches...");
+        $RT::Logger->debug("Creating attributes...");
         my $sys = RT::System->new(RT->SystemUser);
 
         for my $item (@Attributes) {
@@ -1060,8 +1103,14 @@ sub InsertData {
         $RT::Logger->debug("done.");
     }
 
-    my $db_type = RT->Config->Get('DatabaseType');
-    $RT::Handle->Disconnect() unless $db_type eq 'SQLite';
+    # XXX: This disconnect doesn't really belong here; it's a relict from when
+    # this method was extracted from rt-setup-database.  However, too much
+    # depends on it to change without significant testing.  At the very least,
+    # we can provide a way to skip the side-effect.
+    if ( $args{disconnect_after} ) {
+        my $db_type = RT->Config->Get('DatabaseType');
+        $RT::Handle->Disconnect() unless $db_type eq 'SQLite';
+    }
 
     $RT::Logger->debug("Done setting up database content.");
 

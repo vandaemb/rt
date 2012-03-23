@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -56,7 +56,6 @@ use Text::Wrapper;
 use CGI::Cookie;
 use Time::ParseDate;
 use Time::HiRes;
-use HTML::Entities;
 use HTML::Scrubber;
 use RT::Interface::Web;
 use RT::Interface::Web::Request;
@@ -65,10 +64,8 @@ use File::Glob qw( bsd_glob );
 use File::Spec::Unix;
 
 sub DefaultHandlerArgs  { (
-    comp_root => [
-        [ local    => $RT::MasonLocalComponentRoot ],
-        (map {[ "plugin-".$_->Name =>  $_->ComponentRoot ]} @{RT->Plugins}),
-        [ standard => $RT::MasonComponentRoot ]
+    comp_root            => [
+        RT::Interface::Web->ComponentRoots( Names => 1 ),
     ],
     default_escape_flags => 'h',
     data_dir             => "$RT::MasonDataDir",
@@ -211,6 +208,7 @@ sub CleanupRequest {
 use RT::Interface::Web::Handler;
 use CGI::Emulate::PSGI;
 use Plack::Request;
+use Plack::Response;
 use Plack::Util;
 use Encode qw(encode_utf8);
 
@@ -230,6 +228,14 @@ sub PSGIApp {
 
         my $req = Plack::Request->new($env);
 
+        # CGI.pm normalizes .. out of paths so when you requested
+        # /NoAuth/../Ticket/Display.html we saw Ticket/Display.html
+        # PSGI doesn't normalize .. so we have to deal ourselves.
+        if ( $req->path_info =~ m{/\.} ) {
+            $RT::Logger->crit("Invalid request for ".$req->path_info." aborting");
+            my $res = Plack::Response->new(400);
+            return $self->_psgi_response_cb($res->finalize,sub { $self->CleanupRequest });
+        }
         $env->{PATH_INFO} = $self->_mason_dir_index( $h->interp, $req->path_info);
 
         my $ret;
@@ -265,7 +271,7 @@ sub _psgi_response_cb {
              sub {
                  my $res = shift;
 
-                 if ( RT->Config->ExtraSecurity('Clickjacking') ) {
+                 if ( RT->Config->Get('Framebusting') ) {
                      # XXX TODO: Do we want to make the value of this header configurable?
                      Plack::Util::header_set($res->[1], 'X-Frame-Options' => 'DENY');
                  }

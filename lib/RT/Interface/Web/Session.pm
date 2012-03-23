@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -112,15 +112,25 @@ new session objects.
 
 sub Attributes {
     my $class = $_[0]->Class;
-    return !$class->isa('Apache::Session::File') ? {
-            Handle      => $RT::Handle->dbh,
-            LockHandle  => $RT::Handle->dbh,
-            Transaction => 1,
-        } : {
+    my $res;
+    if ( my %props = RT->Config->Get('WebSessionProperties') ) {
+        $res = \%props;
+    }
+    elsif ( $class->isa('Apache::Session::File') ) {
+        $res = {
             Directory     => $RT::MasonSessionDir,
             LockDirectory => $RT::MasonSessionDir,
             Transaction   => 1,
         };
+    }
+    else {
+        $res = {
+            Handle      => $RT::Handle->dbh,
+            LockHandle  => $RT::Handle->dbh,
+            Transaction => 1,
+        };
+    }
+    return $res;
 }
 
 =head3 Ids
@@ -170,7 +180,7 @@ sub ClearOld {
     my $class = shift || __PACKAGE__;
     my $attributes = $class->Attributes;
     if( $attributes->{Directory} ) {
-        return $class->_CleariOldDir( $attributes->{Directory}, @_ );
+        return $class->_ClearOldDir( $attributes->{Directory}, @_ );
     } else {
         return $class->_ClearOldDB( $RT::Handle->dbh, @_ );
     }

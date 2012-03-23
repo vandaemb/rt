@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -156,8 +156,8 @@ sub _ImportOverlays {
     my $class = shift;
     my ($package,undef,undef) = caller();
     $package =~ s|::|/|g;
-    for (qw(Overlay Vendor Local)) {
-        my $filename = $package."_".$_.".pm";
+    for my $type (qw(Overlay Vendor Local)) {
+        my $filename = $package."_".$type.".pm";
         eval { require $filename };
         die $@ if ($@ && $@ !~ m{^Can't locate $filename});
     }

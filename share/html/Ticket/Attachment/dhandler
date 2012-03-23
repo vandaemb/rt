@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -80,10 +80,6 @@
      my $iana = Encode::find_encoding( $enc );
      $iana = $iana? $iana->mime_name : $enc;
 	 $content_type .= ";charset=$iana";
-
-     # unless (RT->Config->Get('TrustMIMEAttachments')) {
-     #     $content_type = 'application/octet-stream';
-     # }
 
      $r->content_type( $content_type );
      $m->clear_buffer();

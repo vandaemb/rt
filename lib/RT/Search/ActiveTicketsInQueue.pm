@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -78,10 +78,7 @@ sub Prepare  {
   my $self = shift;
 
   $self->TicketsObj->LimitQueue(VALUE => $self->Argument);
-
-  foreach my $status (RT::Queue->ActiveStatusArray()) {
-        $self->TicketsObj->LimitStatus(VALUE => $status);
-  }
+  $self->TicketsObj->LimitToActiveStatus;
 
   return(1);
 }

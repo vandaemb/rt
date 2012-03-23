@@ -3,7 +3,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -62,6 +62,7 @@ GetOptions(
     'with-POSTGRESQL|with-pg|with-pgsql', 'with-SQLITE',
     'with-ORACLE',                        'with-FASTCGI',
     'with-MODPERL1',                      'with-MODPERL2',
+    'with-STANDALONE',
 
     'with-DEV',
 
@@ -72,6 +73,7 @@ GetOptions(
     'with-GD',
     'with-DASHBOARDS',
     'with-USERLOGO',
+    'with-SSL-MAILGATE',
 
     'download=s',
     'repository=s',
@@ -100,6 +102,7 @@ my %default = (
     'with-GD' => @RT_GD@,
     'with-DASHBOARDS' => 1,
     'with-USERLOGO' => 1,
+    'with-SSL-MAILGATE' => @RT_SSL_MAILGATE@,
 );
 $args{$_} = $default{$_} foreach grep !exists $args{$_}, keys %default;
 
@@ -156,6 +159,10 @@ sub conclude {
                     0, $module->{error} );
             }
         }
+
+        print "\nPerl library path for @PERL@:\n";
+        print "    $_\n" for @INC;
+
         exit 1;
     }
 }
@@ -184,14 +191,15 @@ DBIx::SearchBuilder 1.59
 Text::Template 1.44
 File::ShareDir
 File::Spec 0.8
-HTML::Entities 
 HTML::Quoted
 HTML::Scrubber 0.08
+HTML::TreeBuilder
+HTML::FormatText
 Log::Dispatch 2.23
 Sys::Syslog 0.16
 Locale::Maketext 1.06
 Locale::Maketext::Lexicon 0.32
-Locale::Maketext::Fuzzy
+Locale::Maketext::Fuzzy 0.11
 MIME::Entity 5.425
 Mail::Mailer 1.57
 Email::Address
@@ -231,7 +239,6 @@ Text::WikiFormat 0.76
 CSS::Squish 0.06
 Devel::StackTrace 1.19
 JSON
-JavaScript::Minifier
 IPC::Run3
 .
 
@@ -245,11 +252,17 @@ CGI::Emulate::PSGI
 .
 
 $deps{'MAILGATE'} = [ text_to_hash( << '.') ];
-HTML::TreeBuilder
-HTML::FormatText
 Getopt::Long
-LWP::UserAgent
+LWP::UserAgent 6.0
 Pod::Usage
+.
+
+$deps{'SSL-MAILGATE'} = [ text_to_hash( << '.') ];
+Crypt::SSLeay
+Net::SSL
+LWP::UserAgent 6.0
+LWP::Protocol::https
+Mozilla::CA
 .
 
 $deps{'CLI'} = [ text_to_hash( << '.') ];
@@ -363,7 +376,7 @@ check_users();
 
 my %Missing_By_Type = ();
 foreach my $type (sort grep $args{$_}, keys %args) {
-    next unless ($type =~ /^with-(.*?)$/);
+    next unless ($type =~ /^with-(.*?)$/) and $deps{$1};
 
     $type = $1;
     section("$type dependencies");
@@ -429,6 +442,10 @@ sub test_dep {
             $error =~ s/\n(.*)$//s;
             $error =~ s/at \(eval \d+\) line \d+\.$//;
             undef $error if $error =~ /this is only/;
+
+            my $path = $module;
+            $path =~ s{::}{/}g;
+            undef $error if $error =~ /^Can't locate $path\.pm in \@INC/;
 
             return ( 0, $error );
         }

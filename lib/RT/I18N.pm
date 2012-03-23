@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -199,11 +199,6 @@ charset encoding (encoded as octets, *not* unicode-strings).  It will
 iterate all the entities in $entity, and try to convert each one into
 specified charset if whose Content-Type is 'text/plain'.
 
-the methods are tries in order:
-1) to convert the entity to $encoding, 
-2) to interpret the entity as iso-8859-1 and then convert it to $encoding,
-3) forcibly convert it to $encoding.
-
 This function doesn't return anything meaningful.
 
 =cut
@@ -241,40 +236,14 @@ sub SetMIMEEntityToEncoding {
 
     if ( $enc ne $charset && $body ) {
         my $string = $body->as_string or return;
+
+        $RT::Logger->debug( "Converting '$charset' to '$enc' for "
+              . $head->mime_type . " - "
+              . ( $head->get('subject') || 'Subjectless message' ) );
+
         # NOTE:: see the comments at the end of the sub.
         Encode::_utf8_off($string);
-        my $orig_string = $string;
-
-        # Convert the body
-        eval {
-            $RT::Logger->debug( "Converting '$charset' to '$enc' for "
-                  . $head->mime_type . " - "
-                  . ( $head->get('subject') || 'Subjectless message' ) );
-            Encode::from_to( $string, $charset => $enc, Encode::FB_CROAK );
-        };
-
-        if ($@) {
-            $RT::Logger->error( "Encoding error: " 
-                  . $@
-                  . " falling back to iso-8859-1 => $enc" );
-            $string = $orig_string;
-            eval {
-                Encode::from_to(
-                    $string,
-                    'iso-8859-1' => $enc,
-                    Encode::FB_CROAK
-                );
-            };
-            if ($@) {
-                $RT::Logger->error( "Encoding error: " 
-                      . $@
-                      . " forcing conversion to $charset => $enc" );
-                $string = $orig_string;
-                Encode::from_to( $string, $charset => $enc );
-            }
-        }
-
-        # }}}
+        Encode::from_to( $string, $charset => $enc );
 
         my $new_body = MIME::Body::InCore->new($string);
 
@@ -320,70 +289,65 @@ sub DecodeMIMEWordsToUTF8 {
 
 sub DecodeMIMEWordsToEncoding {
     my $str = shift;
-    my $to_charset = shift;
+    my $to_charset = _CanonicalizeCharset(shift);
     my $field = shift || '';
 
     my @list = $str =~ m/(.*?)=\?([^?]+)\?([QqBb])\?([^?]+)\?=([^=]*)/gcs;
 
     if ( @list ) {
-    # add everything that hasn't matched to the end of the latest
-    # string in array this happen when we have 'key="=?encoded?="; key="plain"'
-    $list[-1] .= substr($str, pos $str);
+        # add everything that hasn't matched to the end of the latest
+        # string in array this happen when we have 'key="=?encoded?="; key="plain"'
+        $list[-1] .= substr($str, pos $str);
 
-    $str = "";
-    while (@list) {
-	my ($prefix, $charset, $encoding, $enc_str, $trailing) =
-            splice @list, 0, 5;
-        $encoding = lc $encoding;
+        $str = "";
+        while (@list) {
+            my ($prefix, $charset, $encoding, $enc_str, $trailing) =
+                    splice @list, 0, 5;
+            $charset  = _CanonicalizeCharset($charset);
+            $encoding = lc $encoding;
 
-        $trailing =~ s/\s?\t?$//;               # Observed from Outlook Express
+            $trailing =~ s/\s?\t?$//;               # Observed from Outlook Express
 
-	if ( $encoding eq 'q' ) {
-	    use MIME::QuotedPrint;
-	    $enc_str =~ tr/_/ /;		# Observed from Outlook Express
-	    $enc_str = decode_qp($enc_str);
-	} elsif ( $encoding eq 'b' ) {
-	    use MIME::Base64;
-	    $enc_str = decode_base64($enc_str);
-	} else {
-	    $RT::Logger->warning("Incorrect encoding '$encoding' in '$str', "
-            ."only Q(uoted-printable) and B(ase64) are supported");
-	}
+            if ( $encoding eq 'q' ) {
+                use MIME::QuotedPrint;
+                $enc_str =~ tr/_/ /;		# Observed from Outlook Express
+                $enc_str = decode_qp($enc_str);
+            } elsif ( $encoding eq 'b' ) {
+                use MIME::Base64;
+                $enc_str = decode_base64($enc_str);
+            } else {
+                $RT::Logger->warning("Incorrect encoding '$encoding' in '$str', "
+                    ."only Q(uoted-printable) and B(ase64) are supported");
+            }
 
-        # now we have got a decoded subject, try to convert into the encoding
-        unless ( $charset eq $to_charset ) {
-            my $orig_str = $enc_str;
-            eval { Encode::from_to( $enc_str, $charset, $to_charset, Encode::FB_CROAK ) };
-            if ($@) {
-                $enc_str = $orig_str;
-                $charset = _GuessCharset( $enc_str );
+            # now we have got a decoded subject, try to convert into the encoding
+            unless ( $charset eq $to_charset ) {
                 Encode::from_to( $enc_str, $charset, $to_charset );
             }
+
+            # XXX TODO: RT doesn't currently do the right thing with mime-encoded headers
+            # We _should_ be preserving them encoded until after parsing is completed and
+            # THEN undo the mime-encoding.
+            #
+            # This routine should be translating the existing mimeencoding to utf8 but leaving
+            # things encoded.
+            #
+            # It's legal for headers to contain mime-encoded commas and semicolons which
+            # should not be treated as address separators. (Encoding == quoting here)
+            #
+            # until this is fixed, we must escape any string containing a comma or semicolon
+            # this is only a bandaid
+
+            # Some _other_ MUAs encode quotes _already_, and double quotes
+            # confuse us a lot, so only quote it if it isn't quoted
+            # already.
+            $enc_str = qq{"$enc_str"}
+                if $enc_str =~ /[,;]/
+                and $enc_str !~ /^".*"$/
+                and (!$field || $field =~ /^(?:To$|From$|B?Cc$|Content-)/i);
+
+            $str .= $prefix . $enc_str . $trailing;
         }
-
-        # XXX TODO: RT doesn't currently do the right thing with mime-encoded headers
-        # We _should_ be preserving them encoded until after parsing is completed and
-        # THEN undo the mime-encoding.
-        #
-        # This routine should be translating the existing mimeencoding to utf8 but leaving
-        # things encoded.
-        #
-        # It's legal for headers to contain mime-encoded commas and semicolons which
-        # should not be treated as address separators. (Encoding == quoting here)
-        #
-        # until this is fixed, we must escape any string containing a comma or semicolon
-        # this is only a bandaid
-
-        # Some _other_ MUAs encode quotes _already_, and double quotes
-        # confuse us a lot, so only quote it if it isn't quoted
-        # already.
-        $enc_str = qq{"$enc_str"}
-            if $enc_str =~ /[,;]/
-            and $enc_str !~ /^".*"$/
-            and (!$field || $field =~ /^(?:To$|From$|B?Cc$|Content-)/i);
-
-	$str .= $prefix . $enc_str . $trailing;
-    }
     }
 
 # handle filename*=ISO-8859-1''%74%E9%73%74%2E%74%78%74, see also rfc 2231
@@ -394,19 +358,10 @@ sub DecodeMIMEWordsToEncoding {
             my ( $prefix, $charset, $language, $enc_str, $trailing ) =
               splice @list, 0, 5;
             $prefix =~ s/\*=$/=/; # remove the *
+            $charset = _CanonicalizeCharset($charset);
             $enc_str =~ s/%(\w{2})/chr hex $1/eg;
             unless ( $charset eq $to_charset ) {
-                my $orig_str = $enc_str;
-                local $@;
-                eval {
-                    Encode::from_to( $enc_str, $charset, $to_charset,
-                        Encode::FB_CROAK );
-                };
-                if ($@) {
-                    $enc_str = $orig_str;
-                    $charset = _GuessCharset($enc_str);
-                    Encode::from_to( $enc_str, $charset, $to_charset );
-                }
+                Encode::from_to( $enc_str, $charset, $to_charset );
             }
             $enc_str = qq{"$enc_str"}
               if $enc_str =~ /[,;]/
@@ -547,12 +502,19 @@ sub _CanonicalizeCharset {
     my $charset = lc shift;
     return $charset unless $charset;
 
+    # Canonicalize aliases if they're known
+    if (my $canonical = Encode::resolve_alias($charset)) {
+        $charset = $canonical;
+    }
+
     if ( $charset eq 'utf8' || $charset eq 'utf-8-strict' ) {
         return 'utf-8';
     }
-    elsif ( $charset eq 'gb2312' ) {
-        # gbk is superset of gb2312 so it's safe
+    elsif ( $charset eq 'euc-cn' ) {
+        # gbk is superset of gb2312/euc-cn so it's safe
         return 'gbk';
+        # XXX TODO: gb18030 is an even larger, more permissive superset of gbk,
+        # but needs Encode::HanExtra installed
     }
     else {
         return $charset;
@@ -582,36 +544,19 @@ sub SetMIMEHeadToEncoding {
         my @values = $head->get_all($tag);
         $head->delete($tag);
         foreach my $value (@values) {
-            Encode::_utf8_off($value);
-            my $orig_value = $value;
             if ( $charset ne $enc ) {
-                eval {
-                    Encode::from_to( $value, $charset => $enc, Encode::FB_CROAK );
-                };
-                if ($@) {
-                    $RT::Logger->error( "Encoding error: " 
-                          . $@
-                          . " falling back to iso-8859-1 => $enc" );
-                    $value = $orig_value;
-                    eval {
-                        Encode::from_to(
-                            $value,
-                            'iso-8859-1' => $enc,
-                            Encode::FB_CROAK
-                        );
-                    };
-                    if ($@) {
-                        $RT::Logger->error( "Encoding error: " 
-                              . $@
-                              . " forcing conversion to $charset => $enc" );
-                        $value = $orig_value;
-                        Encode::from_to( $value, $charset => $enc );
-                    }
-                }
+                Encode::_utf8_off($value);
+                Encode::from_to( $value, $charset => $enc );
             }
             $value = DecodeMIMEWordsToEncoding( $value, $enc, $tag )
                 unless $preserve_words;
-            $head->add( $tag, $value );
+
+            # We intentionally add a leading space when re-adding the
+            # header; Mail::Header strips it before storing, but it
+            # serves to prevent it from "helpfully" canonicalizing
+            # $head->add("Subject", "Subject: foo") into the same as
+            # $head->add("Subject", "foo");
+            $head->add( $tag, " " . $value );
         }
     }
 

@@ -78,6 +78,10 @@ GENERAL INSTALLATION
     It is particularly important that you read the warnings at the top of
     UPGRADING-4.0 for some common issues.
 
+    RT stores the arguments given to ./configure at the top of the
+    etc/RT_Config.pm file in case you need to recreate your previous use
+    of ./configure.
+
  3) Make sure that RT has the Perl and system libraries it needs to run.
     Check for missing dependencies by running:
 
@@ -160,11 +164,14 @@ GENERAL INSTALLATION
 
           make upgrade
 
-      This will also display the appropriate rt-setup-database command to
-      upgrade your database.  You should back up your database before
-      running this command.  When you run it, you will be prompted for
-      your previous version of RT (such as 3.6.4) so that the appropriate
-      set of database upgrades can be applied.
+      This will also prompt you to upgrade your database by running:
+
+          make upgrade-database
+
+      You should back up your database before running this command.
+      When you run it, you will be prompted for your previous version of
+      RT (such as 3.6.4) so that the appropriate set of database
+      upgrades can be applied.
 
       Finally, clear the Mason cache dir:
 
@@ -175,8 +182,10 @@ GENERAL INSTALLATION
  7) Configure the web server, as described in docs/web_deployment.pod,
     and the email gateway, as described below.
 
-    NOTE: root's password for the web interface is "password" (without
-    the quotes).  Not changing this is a SECURITY risk!
+    NOTE: The default credentials for RT are:
+        User: root
+        Pass: password
+    Not changing the root password from the default is a SECURITY risk!
 
     Once you've set up the web interface, consider setting up automatic
     logout for inactive sessions. For more information about how to do
@@ -220,6 +229,13 @@ GENERAL INSTALLATION
     gateway, type:
 
            perldoc /opt/rt4/bin/rt-mailgate
+
+    If your webserver uses SSL, rt-mailgate will require several new
+    Perl libraries. RT can detect and install these for you automatically
+    if you include --enable-ssl-mailgate when running configure and then
+    run make fixdeps as described in step 4.  It is safe to rerun configure
+    and make fixdeps after you have installed RT, you should be sure to include
+    all the arguments you used in step 2 plus --enable-ssl-mailgate.
 
 
 GETTING HELP
@@ -283,7 +299,7 @@ fix them.  To report a bug, send email to <rt-bugs@bestpractical.com>.
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)

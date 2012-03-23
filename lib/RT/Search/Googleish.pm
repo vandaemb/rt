@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -133,6 +133,8 @@ sub QueryToSQL {
 
     my @clauses;
     for my $subclause (sort keys %limits) {
+        next unless @{$limits{$subclause}};
+
         my $op = $AND{lc $subclause} ? "AND" : "OR";
         push @clauses, "( ".join(" $op ", @{$limits{$subclause}})." )";
     }
@@ -198,7 +200,7 @@ our @GUESS = (
     [ 40 => sub {
           return "status" if RT::Queue->new( $_[2] )->IsValidStatus( $_ )
       }],
-    [ 40 => sub { return "status" if /^(in)?active$/i } ],
+    [ 40 => sub { return "status" if /^((in)?active|any)$/i } ],
     [ 50 => sub {
           my $q = RT::Queue->new( $_[2] );
           return "queue" if $q->Load($_) and $q->Id
@@ -233,6 +235,8 @@ sub HandleStatus    {
         return status => map {s/(['\\])/\\$1/g; "Status = '$_'"} RT::Queue->ActiveStatusArray();
     } elsif ($_[1] =~ /^inactive$/i and !$_[2]) {
         return status => map {s/(['\\])/\\$1/g; "Status = '$_'"} RT::Queue->InactiveStatusArray();
+    } elsif ($_[1] =~ /^any$/i and !$_[2]) {
+        return 'status';
     } else {
         return status => "Status = '$_[1]'";
     }
@@ -246,7 +250,7 @@ sub HandleWatcher     {
 sub HandleRequestor { return requestor => "Requestor STARTSWITH '$_[1]'";  }
 sub HandleQueue     { return queue     => "Queue = '$_[1]'";      }
 sub HandleQ         { return queue     => "Queue = '$_[1]'";      }
-sub HandleCf        { return "cf.$_[3]" => "CF.'$_[3]' LIKE '$_[1]'"; }
+sub HandleCf        { return "cf.$_[3]" => "'CF.{$_[3]}' LIKE '$_[1]'"; }
 
 RT::Base->_ImportOverlays();
 

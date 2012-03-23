@@ -2,7 +2,8 @@
 use strict;
 use warnings;
 
-use RT::Test tests => 106;
+use RT::Test tests => 102;
+use Test::Warn;
 use_ok('RT');
 use_ok('RT::Ticket');
 use_ok('RT::ScripConditions');
@@ -12,8 +13,10 @@ use_ok('RT::Scrips');
 use_ok('RT::Scrip');
 
 
-use File::Temp qw/tempfile/;
-my ($fh, $filename) = tempfile( UNLINK => 1, SUFFIX => '.rt');
+my $filename = File::Spec->catfile( RT::Test->temp_directory, 'link_count' );
+open my $fh, '>', $filename or die $!;
+close $fh;
+
 my $link_scrips_orig = RT->Config->Get( 'LinkTransactionsRun1Scrip' );
 RT->Config->Set( 'LinkTransactionsRun1Scrip', 1 );
 
@@ -194,15 +197,11 @@ ok ($id,$msg);
 
 diag('try link to itself');
 {
-    my @warnings;
-    local $SIG{__WARN__} = sub {
-        push @warnings, "@_";
-    };
-    my ($id, $msg) = $ticket->AddLink(Type => 'RefersTo', Target => $ticket->id);
+    warning_like {
+        ($id, $msg) = $ticket->AddLink(Type => 'RefersTo', Target => $ticket->id);
+    } qr/Can't link a ticket to itself/;
     ok(!$id, $msg);
     is(link_count($filename), 0, "scrips ok");
-    is(@warnings, 1, "one warning");
-    like("@warnings", qr/Can't link a ticket to itself/);
 }
 
 my $ticket2 = RT::Ticket->new(RT->SystemUser);
@@ -220,17 +219,12 @@ ok ($id,$msg);
 ok($id,$msg);
 is(link_count($filename), 1, "scrips ok");
 
-{
-    my @warnings;
-    local $SIG{__WARN__} = sub {
-        push @warnings, "@_";
-    };
+warnings_like {
     ($id,$msg) = $ticket->AddLink(Type => 'RefersTo', Target => -1);
-    ok(!$id,$msg);
-    is(@warnings, 2, "two warnings");
-    like($warnings[0], qr/Could not determine a URI scheme for -1/);
-    like($warnings[1], qr/Couldn't resolve '-1' into a URI/);
-}
+} [
+    qr/Could not determine a URI scheme for -1/,
+    qr/Couldn't resolve '-1' into a URI/,
+];
 
 ($id,$msg) = $ticket->AddLink(Type => 'RefersTo', Target => $ticket2->id);
 ok($id,$msg);

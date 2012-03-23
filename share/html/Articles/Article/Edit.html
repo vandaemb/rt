@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -152,7 +152,6 @@ elsif ( $id eq 'new' ) {
 
     foreach my $arg (keys %ARGS) {
         next if $arg =~ /-(?:Magic|Category)$/;
-        $RT::Logger->debug("Conteplating CF arg $arg"); 
         # Object-RT::Article--CustomField-3-Values
         if ( $arg =~ /^Object-RT::Article--CustomField-(\d+)(.*?)$/ ) {
             my $cfid = $1; 

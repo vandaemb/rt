@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -613,20 +613,27 @@ sub Create {
         foreach my $link (
             ref( $args{$type} ) ? @{ $args{$type} } : ( $args{$type} ) )
         {
+            my ( $val, $msg, $obj ) = $self->__GetTicketFromURI( URI => $link );
+            unless ($val) {
+                push @non_fatal_errors, $msg;
+                next;
+            }
+
             # Check rights on the other end of the link if we must
             # then run _AddLink that doesn't check for ACLs
             if ( RT->Config->Get( 'StrictLinkACL' ) ) {
-                my ($val, $msg, $obj) = $self->__GetTicketFromURI( URI => $link );
-                unless ( $val ) {
-                    push @non_fatal_errors, $msg;
-                    next;
-                }
                 if ( $obj && !$obj->CurrentUserHasRight('ModifyTicket') ) {
                     push @non_fatal_errors, $self->loc('Linking. Permission denied');
                     next;
                 }
             }
-            
+
+            if ( $obj && $obj->Status eq 'deleted' ) {
+                push @non_fatal_errors,
+                  $self->loc("Linking. Can't link to a deleted ticket");
+                next;
+            }
+
             my ( $wval, $wmsg ) = $self->_AddLink(
                 Type                          => $LINKTYPEMAP{$type}->{'Type'},
                 $LINKTYPEMAP{$type}->{'Mode'} => $link,
@@ -950,15 +957,14 @@ sub Import {
 
     $self->OwnerGroup->_AddMember( PrincipalId => $Owner->PrincipalId );
 
-    my $watcher;
-    foreach $watcher ( @{ $args{'Cc'} } ) {
+    foreach my $watcher ( @{ $args{'Cc'} } ) {
         $self->_AddWatcher( Type => 'Cc', Email => $watcher, Silent => 1 );
     }
-    foreach $watcher ( @{ $args{'AdminCc'} } ) {
+    foreach my $watcher ( @{ $args{'AdminCc'} } ) {
         $self->_AddWatcher( Type => 'AdminCc', Email => $watcher,
             Silent => 1 );
     }
-    foreach $watcher ( @{ $args{'Requestor'} } ) {
+    foreach my $watcher ( @{ $args{'Requestor'} } ) {
         $self->_AddWatcher( Type => 'Requestor', Email => $watcher,
             Silent => 1 );
     }
@@ -1777,7 +1783,7 @@ sub SetQueue {
         # On queue change, change queue for reminders too
         my $reminder_collection = $self->Reminders->Collection;
         while ( my $reminder = $reminder_collection->Next ) {
-            my ($status, $msg) = $reminder->SetQueue($NewQueue);
+            my ($status, $msg) = $reminder->_Set( Field => 'Queue', Value => $NewQueueObj->Id(), RecordTransaction => 0 );
             $RT::Logger->error('Queue change failed for reminder #' . $reminder->Id . ': ' . $msg) unless $status;
         }
     }
@@ -1879,6 +1885,30 @@ sub ResolvedObj {
 }
 
 
+=head2 FirstActiveStatus
+
+Returns the first active status that the ticket could transition to,
+according to its current Queue's lifecycle.  May return undef if there
+is no such possible status to transition to, or we are already in it.
+This is used in L<RT::Action::AutoOpen>, for instance.
+
+=cut
+
+sub FirstActiveStatus {
+    my $self = shift;
+
+    my $lifecycle = $self->QueueObj->Lifecycle;
+    my $status = $self->Status;
+    my @active = $lifecycle->Active;
+    # no change if no active statuses in the lifecycle
+    return undef unless @active;
+
+    # no change if the ticket is already has first status from the list of active
+    return undef if lc $status eq lc $active[0];
+
+    my ($next) = grep $lifecycle->IsActive($_), $lifecycle->Transitions($status);
+    return $next;
+}
 
 =head2 SetStarted
 
@@ -1906,17 +1936,15 @@ sub SetStarted {
         $time_obj->SetToNow();
     }
 
-    #Now that we're starting, open this ticket
-    #TODO do we really want to force this as policy? it should be a scrip
-
-    #We need $TicketAsSystem, in case the current user doesn't have
-    #ShowTicket
-    #
+    # We need $TicketAsSystem, in case the current user doesn't have
+    # ShowTicket
     my $TicketAsSystem = RT::Ticket->new(RT->SystemUser);
     $TicketAsSystem->Load( $self->Id );
-    if ( $TicketAsSystem->Status eq 'new' ) {
-        $TicketAsSystem->Open();
-    }
+    # Now that we're starting, open this ticket
+    # TODO: do we really want to force this as policy? it should be a scrip
+    my $next = $TicketAsSystem->FirstActiveStatus;
+
+    $self->SetStatus( $next ) if defined $next;
 
     return ( $self->_Set( Field => 'Started', Value => $time_obj->ISO ) );
 
@@ -2190,12 +2218,12 @@ sub _RecordNote {
             my $addresses = join ', ', (
                 map { RT::User->CanonicalizeEmailAddress( $_->address ) }
                     Email::Address->parse( $args{ $type . 'MessageTo' } ) );
-            $args{'MIMEObj'}->head->add( 'RT-Send-' . $type, Encode::encode_utf8( $addresses ) );
+            $args{'MIMEObj'}->head->replace( 'RT-Send-' . $type, Encode::encode_utf8( $addresses ) );
         }
     }
 
     foreach my $argument (qw(Encrypt Sign)) {
-        $args{'MIMEObj'}->head->add(
+        $args{'MIMEObj'}->head->replace(
             "X-RT-$argument" => Encode::encode_utf8( $args{ $argument } )
         ) if defined $args{ $argument };
     }
@@ -2242,7 +2270,7 @@ sub DryRun {
     my $self = shift;
     my %args = @_;
     my $action;
-    if ($args{'UpdateType'} || $args{Action} =~ /^respon(d|se)$/i ) {
+    if (($args{'UpdateType'} || $args{Action}) =~ /^respon(d|se)$/i ) {
         $action = 'Correspond';
     } else {
         $action = 'Comment';
@@ -2497,6 +2525,9 @@ sub AddLink {
     {
         return ( 0, $self->loc("Permission Denied") );
     }
+
+    return ( 0, "Can't link to a deleted ticket" )
+      if $other_ticket && $other_ticket->Status eq 'deleted';
 
     return $self->_AddLink(%args);
 }

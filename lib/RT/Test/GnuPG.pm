@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -51,7 +51,6 @@ use strict;
 use Test::More;
 use base qw(RT::Test);
 use File::Temp qw(tempdir);
-use RT::Crypt::GnuPG;
 
 our @EXPORT =
   qw(create_a_ticket update_ticket cleanup_headers set_queue_crypt_options 
@@ -69,6 +68,7 @@ sub import {
     $t->plan( skip_all => 'gpg executable is required.' )
       unless RT::Test->find_executable('gpg');
 
+    require RT::Crypt::GnuPG;
     $class->SUPER::import(%args);
 
     RT::Test::diag "GnuPG --homedir " . RT->Config->Get('GnuPGOptions')->{'homedir'};

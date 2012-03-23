@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -202,7 +202,7 @@ my $print_value = sub {
 };
 
 </%init>
-<&| /m/_elements/wrapper, title => $Ticket->Subject &>
+<&| /m/_elements/wrapper, title => loc("#[_1]: [_2]", $Ticket->Id, $Ticket->Subject || '') &>
 <div id="ticket-show">
 <& /m/_elements/ticket_menu, ticket => $Ticket &>
 

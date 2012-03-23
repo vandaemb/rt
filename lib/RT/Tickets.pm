@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -152,6 +152,13 @@ our %FIELD_METADATA = (
     WatcherGroup     => [ 'MEMBERSHIPFIELD', ], #loc_left_pair
     HasAttribute     => [ 'HASATTRIBUTE', 1 ],
     HasNoAttribute     => [ 'HASATTRIBUTE', 0 ],
+);
+
+our %SEARCHABLE_SUBFIELDS = (
+    User => [qw(
+        EmailAddress Name RealName Nickname Organization Address1 Address2
+        WorkPhone HomePhone MobilePhone PagerPhone id
+    )],
 );
 
 # Mapping of Field Type to Function
@@ -325,6 +332,7 @@ sub _BookmarkLimit {
             VALUE    => $id,
             $first? (@rest): ( ENTRYAGGREGATOR => $ea )
         );
+        $first = 0 if $first;
     }
     $sb->_CloseParen;
 }
@@ -646,7 +654,6 @@ sub _TransDateLimit {
             FIELD         => 'Created',
             OPERATOR      => ">=",
             VALUE         => $daystart,
-            CASESENSITIVE => 0,
             @rest
         );
         $sb->_SQLLimit(
@@ -654,7 +661,6 @@ sub _TransDateLimit {
             FIELD         => 'Created',
             OPERATOR      => "<=",
             VALUE         => $dayend,
-            CASESENSITIVE => 0,
             @rest,
             ENTRYAGGREGATOR => 'AND',
         );
@@ -670,7 +676,6 @@ sub _TransDateLimit {
             FIELD         => 'Created',
             OPERATOR      => $op,
             VALUE         => $date->ISO,
-            CASESENSITIVE => 0,
             @rest
         );
     }
@@ -749,6 +754,7 @@ sub _TransContentLimit {
     # way they get parsed in the tree they're in different subclauses.
 
     my ( $self, $field, $op, $value, %rest ) = @_;
+    $field = 'Content' if $field =~ /\W/;
 
     my $config = RT->Config->Get('FullTextSearch') || {};
     unless ( $config->{'Enable'} ) {
@@ -772,7 +778,7 @@ sub _TransContentLimit {
         my $db_type = RT->Config->Get('DatabaseType');
 
         my $alias;
-        if ( $config->{'Table'} ) {
+        if ( $config->{'Table'} and $config->{'Table'} ne "Attachments") {
             $alias = $self->{'_sql_aliases'}{'full_text'} ||= $self->_SQLJoin(
                 TYPE   => 'LEFT',
                 ALIAS1 => $self->{'_sql_trattachalias'},
@@ -784,14 +790,14 @@ sub _TransContentLimit {
             $alias = $self->{'_sql_trattachalias'};
         }
 
-        my $field = $config->{'Field'} || 'Content';
+        #XXX: handle negative searches
+        my $index = $config->{'Column'};
         if ( $db_type eq 'Oracle' ) {
             my $dbh = $RT::Handle->dbh;
+            my $alias = $self->{_sql_trattachalias};
             $self->_SQLLimit(
                 %rest,
-                # XXX: Nasty hack
-                ALIAS         => 'CONTAINS( '. $self->{_sql_trattachalias},
-                FIELD         => $field . ', '. $dbh->quote($value) .')',
+                FUNCTION      => "CONTAINS( $alias.$field, ".$dbh->quote($value) .")",
                 OPERATOR      => '>',
                 VALUE         => 0,
                 QUOTEVALUE    => 0,
@@ -809,20 +815,37 @@ sub _TransContentLimit {
         }
         elsif ( $db_type eq 'Pg' ) {
             my $dbh = $RT::Handle->dbh;
-            #XXX: handle negative searches
             $self->_SQLLimit(
                 %rest,
                 ALIAS       => $alias,
-                FIELD       => $field,
+                FIELD       => $index,
                 OPERATOR    => '@@',
                 VALUE       => 'plainto_tsquery('. $dbh->quote($value) .')',
                 QUOTEVALUE  => 0,
             );
         }
-        else {
-            $RT::Logger->error( "Indexed full text search is not supported for $db_type" );
-            $self->_SQLLimit( %rest, FIELD => 'id', VALUE => 0 );
-            return;
+        elsif ( $db_type eq 'mysql' ) {
+            # XXX: We could theoretically skip the join to Attachments,
+            # and have Sphinx simply index and group by the TicketId,
+            # and join Ticket.id to that attribute, which would be much
+            # more efficient -- however, this is only a possibility if
+            # there are no other transaction limits.
+
+            # This is a special character.  Note that \ does not escape
+            # itself (in Sphinx 2.1.0, at least), so 'foo\;bar' becoming
+            # 'foo\\;bar' is not a vulnerability, and is still parsed as
+            # "foo, \, ;, then bar".  Happily, the default mode is
+            # "all", meaning that boolean operators are not special.
+            $value =~ s/;/\\;/g;
+
+            my $max = $config->{'MaxMatches'};
+            $self->_SQLLimit(
+                %rest,
+                ALIAS       => $alias,
+                FIELD       => 'query',
+                OPERATOR    => '=',
+                VALUE       => "$value;limit=$max;maxmatches=$max",
+            );
         }
     } else {
         $self->_SQLLimit(
@@ -867,6 +890,13 @@ sub _WatcherLimit {
     my $meta = $FIELD_METADATA{ $field };
     my $type = $meta->[1] || '';
     my $class = $meta->[2] || 'Ticket';
+
+    # Bail if the subfield is not allowed
+    if (    $rest{SUBKEY}
+        and not grep { $_ eq $rest{SUBKEY} } @{$SEARCHABLE_SUBFIELDS{'User'}})
+    {
+        die "Invalid watcher subfield: '$rest{SUBKEY}'";
+    }
 
     # Owner was ENUM field, so "Owner = 'xxx'" allowed user to
     # search by id and Name at the same time, this is workaround
@@ -1247,7 +1277,7 @@ Try and turn a CF descriptor into (cfid, cfname) object pair.
 sub _CustomFieldDecipher {
     my ($self, $string) = @_;
 
-    my ($queue, $field, $column) = ($string =~ /^(?:(.+?)\.)?{(.+)}(?:\.(.+))?$/);
+    my ($queue, $field, $column) = ($string =~ /^(?:(.+?)\.)?{(.+)}(?:\.(Content|LargeContent))?$/);
     $field ||= ($string =~ /^{(.*?)}$/)[0] || $string;
 
     my $cf;
@@ -1431,9 +1461,7 @@ sub _CustomFieldLimit {
             $args{'OPERATOR'} = 'NOT MATCHES';
         }
         elsif ( $op =~ /^[<>]=?$/ ) {
-            # XXX: VERY DIRTY HACK
-            $args{'ALIAS'} = 'TO_CHAR( '. $args{'ALIAS'};
-            $args{'FIELD'} .= ')'; #, 1, '. (length($args{'VALUE'}) + 1) .')';
+            $args{'FUNCTION'} = "TO_CHAR( $args{'ALIAS'}.LargeContent )";
         }
         return %args;
     };
@@ -1927,9 +1955,20 @@ sub OrderByCols {
            foreach my $uid ( $self->CurrentUser->Id, RT->Nobody->Id ) {
                if ( RT->Config->Get('DatabaseType') eq 'Oracle' ) {
                    my $f = ($row->{'ALIAS'} || 'main') .'.Owner';
-                   push @res, { %$row, ALIAS => '', FIELD => "CASE WHEN $f=$uid THEN 1 ELSE 0 END", ORDER => $order } ;
+                   push @res, {
+                       %$row,
+                       FIELD => undef,
+                       ALIAS => '',
+                       FUNCTION => "CASE WHEN $f=$uid THEN 1 ELSE 0 END",
+                       ORDER => $order
+                   };
                } else {
-                   push @res, { %$row, FIELD => "Owner=$uid", ORDER => $order } ;
+                   push @res, {
+                       %$row,
+                       FIELD => undef,
+                       FUNCTION => "Owner=$uid",
+                       ORDER => $order
+                   };
                }
            }
 
@@ -2066,7 +2105,43 @@ sub LimitStatus {
     );
 }
 
+=head2 LimitToActiveStatus
 
+Limits the status to L<RT::Queue/ActiveStatusArray>
+
+TODO: make this respect lifecycles for the queues associated with the search
+
+=cut
+
+sub LimitToActiveStatus {
+    my $self = shift;
+
+    my @active = RT::Queue->ActiveStatusArray();
+    for my $active (@active) {
+        $self->LimitStatus(
+            VALUE => $active,
+        );
+    }
+}
+
+=head2 LimitToInactiveStatus
+
+Limits the status to L<RT::Queue/InactiveStatusArray>
+
+TODO: make this respect lifecycles for the queues associated with the search
+
+=cut
+
+sub LimitToInactiveStatus {
+    my $self = shift;
+
+    my @active = RT::Queue->InactiveStatusArray();
+    for my $active (@active) {
+        $self->LimitStatus(
+            VALUE => $active,
+        );
+    }
+}
 
 =head2 IgnoreType
 
@@ -3186,9 +3261,9 @@ is a description of the purpose of that TicketRestriction
 sub DescribeRestrictions {
     my $self = shift;
 
-    my ( $row, %listing );
+    my %listing;
 
-    foreach $row ( keys %{ $self->{'TicketRestrictions'} } ) {
+    foreach my $row ( keys %{ $self->{'TicketRestrictions'} } ) {
         $listing{$row} = $self->{'TicketRestrictions'}{$row}{'DESCRIPTION'};
     }
     return (%listing);
@@ -3255,9 +3330,8 @@ sub DeleteRestriction {
 sub _RestrictionsToClauses {
     my $self = shift;
 
-    my $row;
     my %clause;
-    foreach $row ( keys %{ $self->{'TicketRestrictions'} } ) {
+    foreach my $row ( keys %{ $self->{'TicketRestrictions'} } ) {
         my $restriction = $self->{'TicketRestrictions'}{$row};
 
         # We need to reimplement the subclause aggregation that SearchBuilder does.
@@ -3329,8 +3403,8 @@ sub _RestrictionsToClauses {
         exists $clause{$realfield} or $clause{$realfield} = [];
 
         # Escape Quotes
-        $field =~ s!(['"])!\\$1!g;
-        $value =~ s!(['"])!\\$1!g;
+        $field =~ s!(['\\])!\\$1!g;
+        $value =~ s!(['\\])!\\$1!g;
         my $data = [ $ea, $type, $field, $op, $value ];
 
         # here is where we store extra data, say if it's a keyword or

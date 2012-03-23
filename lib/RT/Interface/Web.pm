@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -70,6 +70,7 @@ use RT::Interface::Web::Session;
 use Digest::MD5 ();
 use Encode qw();
 use List::MoreUtils qw();
+use JSON qw();
 
 =head2 SquishedCSS $style
 
@@ -97,6 +98,18 @@ sub SquishedJS {
     my $js = RT::Squish::JS->new();
     $SQUISHED_JS = $js;
     return $js;
+}
+
+=head2 ClearSquished
+
+Removes the cached CSS and JS entries, forcing them to be regenerated
+on next use.
+
+=cut
+
+sub ClearSquished {
+    undef $SQUISHED_JS;
+    %SQUISHED_CSS = ();
 }
 
 =head2 EscapeUTF8 SCALARREF
@@ -134,7 +147,16 @@ sub EscapeURI {
     $$ref =~ s/([^a-zA-Z0-9_.!~*'()-])/uc sprintf("%%%02X", ord($1))/eg;
 }
 
+=head2 EncodeJSON SCALAR
 
+Encodes the SCALAR to JSON and returns a JSON string.  SCALAR may be a simple
+value or a reference.
+
+=cut
+
+sub EncodeJSON {
+    JSON::to_json(shift, { utf8 => 1, allow_nonref => 1 });
+}
 
 =head2 WebCanonicalizeInfo();
 
@@ -169,17 +191,10 @@ sub WebExternalAutoInfo {
         $user_info{'Privileged'} = 1;
     }
 
-    if ( $^O !~ /^(?:riscos|MacOS|MSWin32|dos|os2)$/ ) {
-
-        # Populate fields with information from Unix /etc/passwd
-
-        my ( $comments, $realname ) = ( getpwnam($user) )[ 5, 6 ];
-        $user_info{'Comments'} = $comments if defined $comments;
-        $user_info{'RealName'} = $realname if defined $realname;
-    } elsif ( $^O eq 'MSWin32' and eval 'use Net::AdminMisc; 1' ) {
-
-        # Populate fields with information from NT domain controller
-    }
+    # Populate fields with information from Unix /etc/passwd
+    my ( $comments, $realname ) = ( getpwnam($user) )[ 5, 6 ];
+    $user_info{'Comments'} = $comments if defined $comments;
+    $user_info{'RealName'} = $realname if defined $realname;
 
     # and return the wad of stuff
     return {%user_info};
@@ -222,6 +237,8 @@ sub HandleRequest {
 
     # Process session-related callbacks before any auth attempts
     $HTML::Mason::Commands::m->callback( %$ARGS, CallbackName => 'Session', CallbackPage => '/autohandler' );
+
+    MaybeRejectPrivateComponentRequest();
 
     MaybeShowNoAuthPage($ARGS);
 
@@ -279,6 +296,8 @@ sub HandleRequest {
 
     # Process per-page final cleanup callbacks
     $HTML::Mason::Commands::m->callback( %$ARGS, CallbackName => 'Final', CallbackPage => '/autohandler' );
+
+    $HTML::Mason::Commands::m->comp( '/Elements/Footer', %$ARGS );
 }
 
 sub _ForceLogout {
@@ -444,6 +463,37 @@ sub MaybeShowNoAuthPage {
     SendSessionCookie();
     $m->comp( { base_comp => $m->request_comp }, $m->fetch_next, %$ARGS );
     $m->abort;
+}
+
+=head2 MaybeRejectPrivateComponentRequest
+
+This function will reject calls to private components, like those under
+C</Elements>. If the requested path is a private component then we will
+abort with a C<403> error.
+
+=cut
+
+sub MaybeRejectPrivateComponentRequest {
+    my $m = $HTML::Mason::Commands::m;
+    my $path = $m->request_comp->path;
+
+    # We do not check for dhandler here, because requesting our dhandlers
+    # directly is okay. Mason will invoke the dhandler with a dhandler_arg of
+    # 'dhandler'.
+
+    if ($path =~ m{
+            / # leading slash
+            ( Elements    |
+              _elements   | # mobile UI
+              Widgets     |
+              autohandler | # requesting this directly is suspicious
+              l           ) # loc component
+            ( $ | / ) # trailing slash or end of path
+        }xi) {
+            $m->abort(403);
+    }
+
+    return;
 }
 
 sub InitializeMenu {
@@ -677,10 +727,11 @@ sub InstantiateNewSession {
 
 sub SendSessionCookie {
     my $cookie = CGI::Cookie->new(
-        -name   => _SessionCookieName(),
-        -value  => $HTML::Mason::Commands::session{_session_id},
-        -path   => RT->Config->Get('WebPath'),
-        -secure => ( RT->Config->Get('WebSecureCookies') ? 1 : 0 )
+        -name     => _SessionCookieName(),
+        -value    => $HTML::Mason::Commands::session{_session_id},
+        -path     => RT->Config->Get('WebPath'),
+        -secure   => ( RT->Config->Get('WebSecureCookies') ? 1 : 0 ),
+        -httponly => ( RT->Config->Get('WebHttpOnlyCookies') ? 1 : 0 ),
     );
 
     $HTML::Mason::Commands::r->err_headers_out->{'Set-Cookie'} = $cookie->as_string;
@@ -711,7 +762,7 @@ sub Redirect {
     # If the user is coming in via a non-canonical
     # hostname, don't redirect them to the canonical host,
     # it will just upset them (and invalidate their credentials)
-    # don't do this if $RT::CanoniaclRedirectURLs is true
+    # don't do this if $RT::CanonicalizeRedirectURLs is true
     if (   !RT->Config->Get('CanonicalizeRedirectURLs')
         && $uri->host eq $server_uri->host
         && $uri->port eq $server_uri->port )
@@ -1014,7 +1065,7 @@ sub LogRecordedSQLStatements {
             message => "SQL("
                 . sprintf( "%.6f", $duration )
                 . "s): $sql;"
-                . ( @bind ? "  [ bound values: @{[map{defined($_)?qq|'$_'|:qq|undef|} @bind]} ]" : "" )
+                . ( @bind ? "  [ bound values: @{[map{ defined $_ ? qq|'$_'| : 'undef'} @bind]} ]" : "" )
         );
     }
 
@@ -1028,15 +1079,8 @@ sub ValidateWebConfig {
     return if $_has_validated_web_config;
     $_has_validated_web_config = 1;
 
-    if ($ENV{'rt.explicit_port'}) {
-        if ($ENV{SERVER_PORT} != $ENV{'rt.explicit_port'}) {
-            $RT::Logger->warn("The actual SERVER_PORT ($ENV{SERVER_PORT}) does NOT match the requested port ($ENV{'rt.explicit_port'}). Perhaps you should Set(\$WebPort, $ENV{SERVER_PORT}) in RT_SiteConfig.pm, otherwise your internal links may be broken.");
-        }
-    }
-    else {
-        if ($ENV{SERVER_PORT} != RT->Config->Get('WebPort')) {
-            $RT::Logger->warn("The actual SERVER_PORT ($ENV{SERVER_PORT}) does NOT match the configured WebPort ($RT::WebPort). Perhaps you should Set(\$WebPort, $ENV{SERVER_PORT}) in RT_SiteConfig.pm, otherwise your internal links may be broken.");
-        }
+    if (!$ENV{'rt.explicit_port'} && $ENV{SERVER_PORT} != RT->Config->Get('WebPort')) {
+        $RT::Logger->warn("The actual SERVER_PORT ($ENV{SERVER_PORT}) does NOT match the configured WebPort ($RT::WebPort). Perhaps you should Set(\$WebPort, $ENV{SERVER_PORT}); in RT_SiteConfig.pm, otherwise your internal links may be broken.");
     }
 
     if ($ENV{HTTP_HOST}) {
@@ -1044,18 +1088,35 @@ sub ValidateWebConfig {
         my ($host) = $ENV{HTTP_HOST} =~ /^(.*?)(:\d+)?$/;
 
         if ($host ne RT->Config->Get('WebDomain')) {
-            $RT::Logger->warn("The actual HTTP_HOST ($host) does NOT match the configured WebDomain ($RT::WebDomain). Perhaps you should Set(\$WebDomain, '$host') in RT_SiteConfig.pm, otherwise your internal links may be broken.");
+            $RT::Logger->warn("The actual HTTP_HOST ($host) does NOT match the configured WebDomain ($RT::WebDomain). Perhaps you should Set(\$WebDomain, '$host'); in RT_SiteConfig.pm, otherwise your internal links may be broken.");
         }
     }
     else {
         if ($ENV{SERVER_NAME} ne RT->Config->Get('WebDomain')) {
-            $RT::Logger->warn("The actual SERVER_NAME ($ENV{SERVER_NAME}) does NOT match the configured WebDomain ($RT::WebDomain). Perhaps you should Set(\$WebDomain, '$ENV{SERVER_NAME}') in RT_SiteConfig.pm, otherwise your internal links may be broken.");
+            $RT::Logger->warn("The actual SERVER_NAME ($ENV{SERVER_NAME}) does NOT match the configured WebDomain ($RT::WebDomain). Perhaps you should Set(\$WebDomain, '$ENV{SERVER_NAME}'); in RT_SiteConfig.pm, otherwise your internal links may be broken.");
         }
     }
 
-    if ($ENV{PATH_INFO} !~ /^\Q$RT::WebPath\E/) {
-        $RT::Logger->warn("A requested path ($ENV{PATH_INFO}) does NOT fall within the configured WebPath ($RT::WebPath). You should fix your Set(\$WebPath, ...) setting in RT_SiteConfig.pm otherwise your internal links may be broken.");
+    if ($ENV{SCRIPT_NAME} ne RT->Config->Get('WebPath')) {
+        $RT::Logger->warn("The actual SCRIPT_NAME ($ENV{SCRIPT_NAME}) does NOT match the configured WebPath ($RT::WebPath). Perhaps you should Set(\$WebPath, '$ENV{SCRIPT_NAME}'); in RT_SiteConfig.pm, otherwise your internal links may be broken.");
     }
+}
+
+sub ComponentRoots {
+    my $self = shift;
+    my %args = ( Names => 0, @_ );
+    my @roots;
+    if (defined $HTML::Mason::Commands::m) {
+        @roots = $HTML::Mason::Commands::m->interp->comp_root_array;
+    } else {
+        @roots = (
+            [ local    => $RT::MasonLocalComponentRoot ],
+            (map {[ "plugin-".$_->Name =>  $_->ComponentRoot ]} @{RT->Plugins}),
+            [ standard => $RT::MasonComponentRoot ]
+        );
+    }
+    @roots = map { $_->[1] } @roots unless $args{Names};
+    return @roots;
 }
 
 package HTML::Mason::Commands;
@@ -1181,6 +1242,47 @@ sub MaybeRedirectForResults {
     return RT::Interface::Web::Redirect($url);
 }
 
+=head2 MaybeRedirectToApproval Path => 'path', Whitelist => REGEX, ARGSRef => HASHREF
+
+If the ticket specified by C<< $ARGSRef->{id} >> is an approval ticket,
+redirect to the approvals display page, preserving any arguments.
+
+C<Path>s matching C<Whitelist> are let through.
+
+This is a no-op if the C<ForceApprovalsView> option isn't enabled.
+
+=cut
+
+sub MaybeRedirectToApproval {
+    my %args = (
+        Path        => $HTML::Mason::Commands::m->request_comp->path,
+        ARGSRef     => {},
+        Whitelist   => undef,
+        @_
+    );
+
+    return unless $ENV{REQUEST_METHOD} eq 'GET';
+
+    my $id = $args{ARGSRef}->{id};
+
+    if (    $id
+        and RT->Config->Get('ForceApprovalsView')
+        and not $args{Path} =~ /$args{Whitelist}/)
+    {
+        my $ticket = RT::Ticket->new( $session{'CurrentUser'} );
+        $ticket->Load($id);
+
+        if ($ticket and $ticket->id and lc($ticket->Type) eq 'approval') {
+            MaybeRedirectForResults(
+                Path      => "/Approvals/Display.html",
+                Force     => 1,
+                Anchor    => $args{ARGSRef}->{Anchor},
+                Arguments => $args{ARGSRef},
+            );
+        }
+    }
+}
+
 =head2 CreateTicket ARGS
 
 Create a new ticket, using Mason's %ARGS.  returns @results.
@@ -1244,9 +1346,8 @@ sub CreateTicket {
     }
 
     foreach my $argument (qw(Encrypt Sign)) {
-        $MIMEObj->head->add(
-            "X-RT-$argument" => Encode::encode_utf8( $ARGS{$argument} )
-        ) if defined $ARGS{$argument};
+        $MIMEObj->head->replace( "X-RT-$argument" => $ARGS{$argument} ? 1 : 0 )
+          if defined $ARGS{$argument};
     }
 
     my %create_args = (
@@ -1448,7 +1549,7 @@ sub ProcessUpdateMessage {
         Type    => $args{ARGSRef}->{'UpdateContentType'},
     );
 
-    $Message->head->add( 'Message-ID' => Encode::encode_utf8(
+    $Message->head->replace( 'Message-ID' => Encode::encode_utf8(
         RT::Interface::Email::GenMessageId( Ticket => $args{'TicketObj'} )
     ) );
     my $old_txn = RT::Transaction->new( $session{'CurrentUser'} );
@@ -1479,8 +1580,8 @@ sub ProcessUpdateMessage {
     }
 
     my %message_args = (
-        Sign         => $args{ARGSRef}->{'Sign'},
-        Encrypt      => $args{ARGSRef}->{'Encrypt'},
+        Sign         => ( $args{ARGSRef}->{'Sign'} ? 1 : 0 ),
+        Encrypt      => ( $args{ARGSRef}->{'Encrypt'} ? 1 : 0 ),
         MIMEObj      => $Message,
         TimeTaken    => $args{ARGSRef}->{'UpdateTimeWorked'}
     );
@@ -1600,8 +1701,8 @@ sub MakeMIMEEntity {
     if ( $args{'AttachmentFieldName'} ) {
 
         my $cgi_object = $m->cgi_object;
-
-        if ( my $filehandle = $cgi_object->upload( $args{'AttachmentFieldName'} ) ) {
+        my $filehandle = $cgi_object->upload( $args{'AttachmentFieldName'} );
+        if ( defined $filehandle && length $filehandle ) {
 
             my ( @content, $buffer );
             while ( my $bytesread = read( $filehandle, $buffer, 4096 ) ) {
@@ -1610,9 +1711,7 @@ sub MakeMIMEEntity {
 
             my $uploadinfo = $cgi_object->uploadInfo($filehandle);
 
-            # Prefer the cached name first over CGI.pm stringification.
-            my $filename = $RT::Mason::CGI::Filename;
-            $filename = "$filehandle" unless defined $filename;
+            my $filename = "$filehandle";
             $filename =~ s{^.*[\\/]}{};
 
             $Message->attach(
@@ -1623,6 +1722,9 @@ sub MakeMIMEEntity {
             if ( !$args{'Subject'} && !( defined $args{'Body'} && length $args{'Body'} ) ) {
                 $Message->head->set( 'Subject' => $filename );
             }
+
+            # Attachment parts really shouldn't get a Message-ID
+            $Message->head->delete('Message-ID');
         }
     }
 
@@ -1982,7 +2084,9 @@ sub ProcessTicketBasics {
     );
 
     # We special case owner changing, so we can use ForceOwnerChange
-    if ( $ARGSRef->{'Owner'} && ( $OrigOwner != $ARGSRef->{'Owner'} ) ) {
+    if ( $ARGSRef->{'Owner'}
+      && $ARGSRef->{'Owner'} !~ /\D/
+      && ( $OrigOwner != $ARGSRef->{'Owner'} ) ) {
         my ($ChownType);
         if ( $ARGSRef->{'ForceOwnerChange'} ) {
             $ChownType = "Force";
@@ -2810,6 +2914,17 @@ sub _NewScrubber {
     return $scrubber;
 }
 
+=head2 JSON
+
+Redispatches to L<RT::Interface::Web/EncodeJSON>
+
+=cut
+
+sub JSON {
+    RT::Interface::Web::EncodeJSON(@_);
+}
+
+package RT::Interface::Web;
 RT::Base->_ImportOverlays();
 
 1;

@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -186,11 +186,14 @@ sub Create {
        # Entry point of the rule system
        my $ticket = RT::Ticket->new(RT->SystemUser);
        $ticket->Load($args{'ObjectId'});
+       my $txn = RT::Transaction->new($RT::SystemUser);
+       $txn->Load($self->id);
+
        my $rules = $self->{rules} = RT::Ruleset->FindAllRules(
             Stage       => 'TransactionCreate',
             Type        => $args{'Type'},
             TicketObj   => $ticket,
-            TransactionObj => $self,
+            TransactionObj => $txn,
        );
 
         if ($args{'CommitScrips'} ) {
@@ -549,45 +552,26 @@ sub _Attach {
 sub ContentAsMIME {
     my $self = shift;
 
-    my $main_content = $self->ContentObj;
-    return unless $main_content;
-
-    my $entity = $main_content->ContentAsMIME;
-
-    if ( $main_content->Parent ) {
-        # main content is not top most entity, we shouldn't loose
-        # From/To/Cc headers that are on a top part
-        my $attachments = RT::Attachments->new( $self->CurrentUser );
-        $attachments->Columns(qw(id Parent TransactionId Headers));
-        $attachments->Limit( FIELD => 'TransactionId', VALUE => $self->id );
-        $attachments->Limit( FIELD => 'Parent', VALUE => 0 );
-        $attachments->Limit( FIELD => 'Parent', OPERATOR => 'IS', VALUE => 'NULL', QUOTEVALUE => 0 );
-        $attachments->OrderBy( FIELD => 'id', ORDER => 'ASC' );
-        my $tmp = $attachments->First;
-        if ( $tmp && $tmp->id ne $main_content->id ) {
-            $entity->make_multipart;
-            $entity->head->add( split /:/, $_, 2 ) foreach $tmp->SplitHeaders;
-            $entity->make_singlepart;
-        }
-    }
+    # RT::Attachments doesn't limit ACLs as strictly as RT::Transaction does
+    # since it has less information available without looking to it's parent
+    # transaction.  Check ACLs here before we go any further.
+    return unless $self->CurrentUserCanSee;
 
     my $attachments = RT::Attachments->new( $self->CurrentUser );
+    $attachments->OrderBy( FIELD => 'id', ORDER => 'ASC' );
     $attachments->Limit( FIELD => 'TransactionId', VALUE => $self->id );
-    $attachments->Limit(
-        FIELD => 'id',
-        OPERATOR => '!=',
-        VALUE => $main_content->id,
+    $attachments->Limit( FIELD => 'Parent',        VALUE => 0 );
+    $attachments->RowsPerPage(1);
+
+    my $top = $attachments->First;
+    return unless $top;
+
+    my $entity = MIME::Entity->build(
+        Type        => 'message/rfc822',
+        Description => 'transaction ' . $self->id,
+        Data        => $top->ContentAsMIME(Children => 1)->as_string,
     );
-    $attachments->Limit(
-        FIELD => 'ContentType',
-        OPERATOR => 'NOT STARTSWITH',
-        VALUE => 'multipart/',
-    );
-    $attachments->LimitNotEmpty;
-    while ( my $a = $attachments->Next ) {
-        $entity->make_multipart unless $entity->is_multipart;
-        $entity->add_part( $a->ContentAsMIME );
-    }
+
     return $entity;
 }
 
@@ -775,13 +759,13 @@ sub BriefDescription {
         my $self = shift;
         my $principal = RT::Principal->new($self->CurrentUser);
         $principal->Load($self->NewValue);
-        return $self->loc( "[_1] [_2] added", $self->Field, $principal->Object->Name);
+        return $self->loc( "[_1] [_2] added", $self->loc($self->Field), $principal->Object->Name);
     },
     DelWatcher => sub {
         my $self = shift;
         my $principal = RT::Principal->new($self->CurrentUser);
         $principal->Load($self->OldValue);
-        return $self->loc( "[_1] [_2] deleted", $self->Field, $principal->Object->Name);
+        return $self->loc( "[_1] [_2] deleted", $self->loc($self->Field), $principal->Object->Name);
     },
     Subject => sub {
         my $self = shift;

@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -101,7 +101,6 @@ which can be used with any queue.
 
 sub LimitToGlobal {
     my $self = shift;
-    my $queue_id = shift;
     $self->Limit(FIELD => 'Queue',
                  VALUE => "0",
                  OPERATOR => '='

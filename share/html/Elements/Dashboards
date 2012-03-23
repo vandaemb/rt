@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -52,6 +52,6 @@
     titleright_href => RT->Config->Get('WebPath').'/Dashboards/index.html',
 &>
 
-<& /Dashboards/Elements/ShowDashboards &>
+<& /Dashboards/Elements/ShowDashboards, IncludeSuperuserGroups => 0 &>
 
 </&>

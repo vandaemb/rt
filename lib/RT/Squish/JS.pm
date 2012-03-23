@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -76,7 +76,13 @@ sub Squish {
     my $content;
 
     for my $file ( RT->Config->Get('JSFiles') ) {
-        $content .= $HTML::Mason::Commands::m->scomp("/NoAuth/js/$file");
+        my $path = "/NoAuth/js/$file";
+        if ( $HTML::Mason::Commands::m->comp_exists($path) ) {
+            $content .= $HTML::Mason::Commands::m->scomp($path);
+        } else {
+            RT->Logger->error("Unable to open $path for JS Squishing");
+            next;
+        }
     }
 
     return $self->Filter($content);
@@ -92,6 +98,16 @@ sub Filter {
         my $input = $content;
         my ( $output, $error );
 
+        # If we're running under fastcgi, STDOUT and STDERR are tied
+        # filehandles, which cause IPC::Run3 to flip out.  Construct
+        # temporary, not-tied replacements for it to see instead.
+        my $stdout = IO::Handle->new;
+        $stdout->fdopen( 1, 'w' );
+        local *STDOUT = $stdout;
+        my $stderr = IO::Handle->new;
+        $stderr->fdopen( 2, 'w' );
+        local *STDERR = $stderr;
+
         local $SIG{'CHLD'} = 'DEFAULT';
         require IPC::Run3;
         IPC::Run3::run3( [$jsmin], \$input, \$output, \$error );
@@ -104,15 +120,6 @@ sub Filter {
         }
     }
 
-    unless ($minified) {
-        eval { require JavaScript::Minifier };
-        if ($@) {
-            $RT::Logger->debug("can't load JavaScript::Minifier: $@");
-        }
-        else {
-            $content = JavaScript::Minifier::minify( input => $content );
-        }
-    }
     return $content;
 }
 

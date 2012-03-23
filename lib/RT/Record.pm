@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -152,13 +152,12 @@ Return this object's attributes as an RT::Attributes object
 
 sub Attributes {
     my $self = shift;
-    
     unless ($self->{'attributes'}) {
-        $self->{'attributes'} = RT::Attributes->new($self->CurrentUser);     
-       $self->{'attributes'}->LimitToObject($self); 
+        $self->{'attributes'} = RT::Attributes->new($self->CurrentUser);
+        $self->{'attributes'}->LimitToObject($self);
+        $self->{'attributes'}->OrderByCols({FIELD => 'id'});
     }
-    return ($self->{'attributes'}); 
-
+    return ($self->{'attributes'});
 }
 
 
@@ -234,10 +233,8 @@ sub DeleteAttribute {
 
 Returns the first attribute with the matching name for this object (as an
 L<RT::Attribute> object), or C<undef> if no such attributes exist.
-
-Note that if there is more than one attribute with the matching name on the
-object, the choice of which one to return is basically arbitrary.  This may be
-made well-defined in the future.
+If there is more than one attribute with the matching name on the
+object, the first value that was set is returned.
 
 =cut
 
@@ -267,6 +264,18 @@ an error.
 
 If this object's table has any of the following atetributes defined as
 'Auto', this routine will automatically fill in their values.
+
+=over
+
+=item Created
+
+=item Creator
+
+=item LastUpdated
+
+=item LastUpdatedBy
+
+=back
 
 =cut
 
@@ -495,7 +504,7 @@ sub _Set {
           $self->loc(
             "[_1] changed from [_2] to [_3]",
             $self->loc( $args{'Field'} ),
-            ( $old_val ? "'$old_val'" : $self->loc("(no value)") ),
+            ( $old_val ? '"' . $old_val . '"' : $self->loc("(no value)") ),
             '"' . $self->__Value( $args{'Field'}) . '"' 
           );
       } else {
@@ -594,10 +603,10 @@ Validate the name of the record we're creating. Mostly, just make sure it's not 
 sub ValidateName {
     my $self = shift;
     my $value = shift;
-    if ($value && $value=~ /^\d+$/) {
+    if (defined $value && $value=~ /^\d+$/) {
         return(0);
     } else  {
-         return (1);
+        return(1);
     }
 }
 
@@ -667,8 +676,8 @@ sub _BuildTableAttributes {
 
     }
 
-    foreach my $column (%$attributes) {
-        foreach my $attr ( %{ $attributes->{$column} } ) {
+    foreach my $column (keys %$attributes) {
+        foreach my $attr ( keys %{ $attributes->{$column} } ) {
             $_TABLE_ATTR->{$class}->{$column}->{$attr} = $attributes->{$column}->{$attr};
         }
     }
@@ -676,8 +685,8 @@ sub _BuildTableAttributes {
         next unless UNIVERSAL::can( $self, $method );
         $attributes = $self->$method();
 
-        foreach my $column (%$attributes) {
-            foreach my $attr ( %{ $attributes->{$column} } ) {
+        foreach my $column ( keys %$attributes ) {
+            foreach my $attr ( keys %{ $attributes->{$column} } ) {
                 $_TABLE_ATTR->{$class}->{$column}->{$attr} = $attributes->{$column}->{$attr};
             }
         }
@@ -1080,10 +1089,7 @@ sub UnresolvedDependencies {
     my $self = shift;
     my $deps = RT::Tickets->new($self->CurrentUser);
 
-    my @live_statuses = RT::Queue->ActiveStatusArray();
-    foreach my $status (@live_statuses) {
-        $deps->LimitStatus(VALUE => $status);
-    }
+    $deps->LimitToActiveStatus;
     $deps->LimitDependedOnBy($self->Id);
 
     return($deps);
@@ -1192,7 +1198,7 @@ links of any type.
 
 =cut
 
-*Links = \&_Links;
+sub Links { shift->_Links(@_) }
 
 sub _Links {
     my $self = shift;

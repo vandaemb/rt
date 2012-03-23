@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -77,9 +77,6 @@ use RT::Groups;
 use RT::ACL;
 use RT::Interface::Email;
 
-our @DEFAULT_ACTIVE_STATUS = qw(new open stalled);
-our @DEFAULT_INACTIVE_STATUS = qw(resolved rejected deleted);  
-
 # $self->loc('new'); # For the string extractor to get a string to localize
 # $self->loc('open'); # For the string extractor to get a string to localize
 # $self->loc('stalled'); # For the string extractor to get a string to localize
@@ -114,9 +111,7 @@ our $RIGHTS = {
     CommentOnTicket     => 'Comment on tickets',                                        # loc_pair
     OwnTicket           => 'Own tickets',                                               # loc_pair
     ModifyTicket        => 'Modify tickets',                                            # loc_pair
-    ModifyTicketStatus  => 'Modify ticket status',                                      # loc_pair
     DeleteTicket        => 'Delete tickets',                                            # loc_pair
-    RejectTicket        => 'Reject tickets',                                            # loc_pair
     TakeTicket          => 'Take tickets',                                              # loc_pair
     StealTicket         => 'Steal tickets',                                             # loc_pair
 
@@ -146,9 +141,7 @@ our $RIGHT_CATEGORIES = {
     CommentOnTicket     => 'General',
     OwnTicket           => 'Staff',
     ModifyTicket        => 'Staff',
-    ModifyTicketStatus  => 'Staff',
     DeleteTicket        => 'Staff',
-    RejectTicket        => 'Staff',
     TakeTicket          => 'Staff',
     StealTicket         => 'Staff',
     ForwardMessage      => 'Staff',
@@ -408,8 +401,9 @@ sub Create {
         return ( 0, $self->loc("No permission to create queues") );
     }
 
-    unless ( $self->ValidateName( $args{'Name'} ) ) {
-        return ( 0, $self->loc('Queue already exists') );
+    {
+        my ($val, $msg) = $self->_ValidateName( $args{'Name'} );
+        return ($val, $msg) unless $val;
     }
 
     if ( $args{'Lifecycle'} && $args{'Lifecycle'} ne 'default' ) {
@@ -538,19 +532,33 @@ sub ValidateName {
     my $self = shift;
     my $name = shift;
 
+    my ($ok, $msg) = $self->_ValidateName($name);
+
+    return $ok ? 1 : 0;
+}
+
+sub _ValidateName {
+    my $self = shift;
+    my $name = shift;
+
+    return (undef, "Queue name is required") unless length $name;
+
+    # Validate via the superclass first
+    # Case: short circuit if it's an integer so we don't have
+    # fale negatives when loading a temp queue
+    unless ( my $q = $self->SUPER::ValidateName($name) ) {
+        return ($q, $self->loc("'[_1]' is not a valid name.", $name));
+    }
+
     my $tempqueue = RT::Queue->new(RT->SystemUser);
     $tempqueue->Load($name);
 
     #If this queue exists, return undef
     if ( $tempqueue->Name() && $tempqueue->id != $self->id)  {
-        return (undef);
+        return (undef, $self->loc("Queue already exists") );
     }
 
-    #If the queue doesn't exist, return 1
-    else {
-        return ($self->SUPER::ValidateName($name));
-    }
-
+    return (1);
 }
 
 
@@ -1006,7 +1014,7 @@ sub DeleteWatcher {
         return(0,$self->loc("Group not found"));
     }
 
-    return ( 0, "Unknown watcher type [_1]", $args{Type} )
+    return ( 0, $self->loc('Unknown watcher type [_1]', $args{Type}) )
         unless $self->IsRoleGroupType($args{Type});
 
     my ($ok, $msg) = $self->_HasModifyWatcherRight(%args);

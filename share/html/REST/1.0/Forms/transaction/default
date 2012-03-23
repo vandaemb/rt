@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -107,7 +107,8 @@ if ($tid) {
   	      else {
   	        $size .= "b";
   	      }
-  	      $attachlist .= "\n" . $a->Id.": ".($a->Filename || "untitled")." (".$size.")";
+              my $name = (defined $a->Filename and length $a->Filename) ? $a->Filename : "untitled";
+              $attachlist .= "\n" . $a->Id.": $name ($size)";
   	    }
   	    push @data, [Attachments => $attachlist];
       }

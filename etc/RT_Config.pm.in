@@ -62,9 +62,9 @@ configured as aliases for F<rt-mailgate>.
 
 =cut
 
-Set($CorrespondAddress, "");
+Set($CorrespondAddress, '');
 
-Set($CommentAddress, "");
+Set($CommentAddress, '');
 
 =item C<$WebDomain>
 
@@ -84,7 +84,7 @@ high port for this user.
 
 =cut
 
-Set($WebPort, 80);# + ($< * 7274) % 32766 + ($< && 1024));
+Set($WebPort, 80);
 
 =item C<$WebPath>
 
@@ -228,6 +228,14 @@ From lowest to highest priority, the levels are:
 
     debug info notice warning error critical alert emergency
 
+Many syslogds are configured to discard or file debug messages away, so
+if you're attempting to debug RT you may need to reconfigure your
+syslogd or use one of the other logging options.
+
+Logging to your screen affects scripts run from the command line as well
+as the STDERR sent to your webserver (so these logs will usually show up
+in your web server's error logs).
+
 =cut
 
 Set($LogToSyslog, "info");
@@ -235,13 +243,15 @@ Set($LogToSTDERR, "info");
 
 =item C<$LogToFile>, C<$LogDir>, C<$LogToFileNamed>
 
-Logging to a standalone file is also possible, but note that the file
-should needs to both exist and be writable by all direct users of the
-RT API.  This generally includes the web server and whoever
-rt-crontool runs as.  Note that rt-mailgate and the RT CLI go through
-the webserver, so their users do not need to have write permissions to
-this file. If you expect to have multiple users of the direct API,
-Best Practical recommends using syslog instead of direct file logging.
+Logging to a standalone file is also possible. The file needs to both
+exist and be writable by all direct users of the RT API. This generally
+includes the web server and whoever rt-crontool runs as. Note that
+rt-mailgate and the RT CLI go through the webserver, so their users do
+not need to have write permissions to this file. If you expect to have
+multiple users of the direct API, Best Practical recommends using syslog
+instead of direct file logging.
+
+You should set C<$LogToFile> to one of the levels documented above.
 
 =cut
 
@@ -289,14 +299,7 @@ you're not dealing with historical C<$rtname> values, you'll likely
 never have to change this configuration.
 
 Be B<very careful> with it. Note that it overrides C<$rtname> for
-subject token matching and that you should use only "non-capturing"
-parenthesis grouping. For example:
-
-C<Set($EmailSubjectTagRegex, qr/(?:example.com|example.org)/i );>
-
-and NOT
-
-C<Set($EmailSubjectTagRegex, qr/(example.com|example.org)/i );>
+subject token matching.
 
 The setting below would make RT behave exactly as it does without the
 setting enabled.
@@ -313,7 +316,7 @@ should I<not> be an address that's managed by your RT instance.
 
 =cut
 
-Set($OwnerEmail, "root");
+Set($OwnerEmail, 'root');
 
 =item C<$LoopsToRTOwner>
 
@@ -339,12 +342,7 @@ Set($StoreLoops, undef);
 C<$MaxAttachmentSize> sets the maximum size (in bytes) of attachments
 stored in the database.
 
-For MySQL and Oracle, we set this size to 10 megabytes.  If you're
-running a PostgreSQL version earlier than 7.1, you will need to drop
-this to 8192. (8k)
-
 =cut
-
 
 Set($MaxAttachmentSize, 10_000_000);
 
@@ -657,7 +655,7 @@ then C<$OwnerEmail> will be used.
 
 =cut
 
-Set($DashboardAddress, "");
+Set($DashboardAddress, '');
 
 =item C<$DashboardSubject>
 
@@ -835,8 +833,12 @@ Set(@CustomFieldValuesSources, ());
 
 =item C<$CanonicalizeRedirectURLs>
 
-Set C<$CanonicalizeRedirectURLs> to 1 to use $C<WebURL> when
+Set C<$CanonicalizeRedirectURLs> to 1 to use C<$WebURL> when
 redirecting rather than the one we get from C<%ENV>.
+
+Apache's UseCanonicalName directive changes the hostname that RT
+finds in C<%ENV>.  You can read more about what turning it On or Off
+means in the documentation for your version of Apache.
 
 If you use RT behind a reverse proxy, you almost certainly want to
 enable this option.
@@ -856,7 +858,6 @@ Set(@JSFiles, qw/
     jquery-1.4.2.min.js
     jquery_noconflict.js
     jquery-ui-1.8.4.custom.min.js
-    jquery.tablesorter.min.js
     jquery-ui-patch-datepicker.js
     ui.timepickr.js
     titlebox-state.js
@@ -872,12 +873,12 @@ Set(@JSFiles, qw/
 
 =item C<$JSMinPath>
 
-Path to the jsmin binary, available from
-http://www.crockford.com/javascript/jsmin.html
+Path to the jsmin binary; if specified, it will be used to minify
+C<JSFiles>.  The default, and the fallback if the binary cannot be
+found, is to simply concatenate the files.
 
-If specified, it will be used to minify C<JSFiles>.  If it cannot be
-found, RT will fall back to the L<JavaScript::Minifier> module;
-failing that, RT will will simply concatenate the files.
+jsmin can be installed by running 'make jsmin' from the RT install
+directory, or from http://www.crockford.com/javascript/jsmin.html
 
 =cut
 
@@ -1040,7 +1041,7 @@ RT stores dates using the UTC timezone in the DB, so charts grouped by
 dates and time are not representative. Set C<$ChartsTimezonesInDB> to 1
 to enable timezone conversions using your DB's capabilities. You may
 need to do some work on the DB side to use this feature, read more in
-F<docs/timezones_in_charts.pod>.
+F<docs/customizing/timezones_in_charts.pod>.
 
 At this time, this feature only applies to MySQL and PostgreSQL.
 
@@ -1095,16 +1096,13 @@ Set($HomepageComponents, [qw(QuickCreate Quicksearch MyAdminQueues MySupportQueu
 =item C<$UseSQLForACLChecks>
 
 Historically, ACLs were checked on display, which could lead to empty
-search pages and wrong ticket counts.  Set C<$UseSQLForACLChecks> to 1
-to limit search results in SQL instead, which eliminates these
-problems.
-
-This option is still relatively new; it may result in performance
-problems in some cases, or significant speedups in others.
+search pages and wrong ticket counts.  Set C<$UseSQLForACLChecks> to 0
+to go back to this method; this will reduce the complexity of the
+generated SQL statements, at the cost of the aforementioned bugs.
 
 =cut
 
-Set($UseSQLForACLChecks, undef);
+Set($UseSQLForACLChecks, 1);
 
 =item C<$TicketsItemMapSize>
 
@@ -1170,34 +1168,24 @@ Set($DefaultSelfServiceSearchResultFormat, qq{
 
 =item C<%FullTextSearch>
 
-Full text search (FTS) without indexes is a very slow operation and by
-default is disabled at all. To enable FTS set key 'Enable' to 1.
+Full text search (FTS) without database indexing is a very slow
+operation, and is thus disabled by default.
 
-Setup of indexes and filling them with data requires additional steps
-that vary from DB to DB. Use F<sbin/rt-setup-fulltext-index> helper
-for quick start. This script creates required structures in the DB and
-gives some ideas on next steps. Use F<sbin/rt-fulltext-indexer> to
-keep the index in sync.
+Before setting C<Indexed> to 1, read F<docs/full_text_indexing.pod> for
+the full details of FTS on your particular database.
+
+It is possible to enable FTS without database indexing support, simply
+by setting the C<Enable> key to 1, while leaving C<Indexed> set to 0.
+This is not generally suggested, as unindexed full-text searching can
+cause severe performance problems.
 
 =cut
 
 Set(%FullTextSearch,
     Enable  => 0,
     Indexed => 0,
-#    Table   => 'AttachmentsIndex',
-#    Column  => 'ftsindex',
 );
 
-
-=item C<$DontSearchFileAttachments>
-
-If C<$DontSearchFileAttachments> is set to 1, then uploaded files
-(attachments with file names) are not searched during full-content
-ticket searches.
-
-=cut
-
-Set($DontSearchFileAttachments, undef);
 
 =item C<$OnlySearchActiveTicketsInSimpleSearch>
 
@@ -1251,6 +1239,9 @@ shows the Requestor's name and ticket list.  If you would like to see
 extra information about the user, this expects a Format string of user
 attributes.  Please note that not all the attributes are supported in
 this display because we're not building a table.
+
+Example:
+C<Set($MoreAboutRequestorExtraInfo,"Organization, Address1")>
 
 =cut
 
@@ -1306,16 +1297,21 @@ users have the OwnTicket right.
 
 Set($AutocompleteOwners, 0);
 
+=item C<$AutocompleteOwnersForSearch>
+
+If set to 1, the owner drop-downs for the query builder are always
+replaced by text field that autocomplete and C<$AutocompleteOwners>
+is ignored. Helpful when owners list is huge in the query builder.
+
+=cut
+
+Set($AutocompleteOwnersForSearch, 0);
+
 =item C<$UserAutocompleteFields>
 
 Specifies which fields of L<RT::User> to match against and how to
 match each field when autocompleting users.  Valid match methods are
 LIKE, STARTSWITH, ENDSWITH, =, and !=.
-
-Not all User fields are publicly accessible and hence won't work for
-autocomplete unless you override their accessibility using a local
-overlay or a plugin.  Out of the box the following fields are public:
-Name, EmailAddress, RealName, NickName, and Organization.
 
 =cut
 
@@ -1363,6 +1359,29 @@ reply page should include the content of the messages to be sent.
 =cut
 
 Set($PreviewScripMessages, 0);
+
+=item C<$SimplifiedRecipients>
+
+If C<$SimplifiedRecipients> is set, a simple list of who will receive
+B<any> kind of mail will be shown on the ticket reply page, instead of a
+detailed breakdown by scrip.
+
+=cut
+
+Set($SimplifiedRecipients, 0);
+
+=item C<$HideResolveActionsWithDependencies>
+
+If set to 1, this option will skip ticket menu actions which can't be
+completed successfully because of outstanding active Depends On tickets.
+
+By default, all ticket actions are displayed in the menu even if some of
+them can't be successful until all Depends On links are resolved or
+transitioned to another inactive status.
+
+=cut
+
+Set($HideResolveActionsWithDependencies, 0);
 
 =back
 
@@ -1567,7 +1586,7 @@ Set($ShowTransactionImages, 1);
 Normally plaintext attachments are displayed as HTML with line breaks
 preserved.  This causes space- and tab-based formatting not to be
 displayed correctly.  By setting $PlainTextPre messages will be
-displayed using <pre>; this option overrides C<$PlainTextMono>.
+displayed using <pre>.
 
 =cut
 
@@ -1578,7 +1597,7 @@ Set($PlainTextPre, 0);
 
 Set C<$PlainTextMono> to 1 to use monospaced font and preserve
 formatting; unlike C<$PlainTextPre>, the text will wrap to fit width
-of the browser window.
+of the browser window; this option overrides C<$PlainTextPre>.
 
 =cut
 
@@ -1605,9 +1624,7 @@ provides two formats:
   link after the URL.
 
 * 'httpurl_overwrite': also detects URLs as 'httpurl' format, but
-  replaces the URL with a link and *adds spaces* into the text if it
-  is longer then 30 characters. This allows the browser to wrap long
-  URLs and avoid horizontal scrolling.
+  replaces the URL with a link.
 
 See F<share/html/Elements/MakeClicky> for documentation on how to add
 your own styles of link detection.
@@ -1678,21 +1695,56 @@ Should rejection notes from approvals be sent to the requestors?
 
 Set($ApprovalRejectionNotes, 1);
 
-=item C<@ExtraSecurity>
+=item C<$ForceApprovalsView>
+
+Should approval tickets only be viewed and modified through the standard
+approval interface?  Changing this setting to 1 will redirect any attempt to
+use the normal ticket display and modify page for approval tickets.
+
+For example, with this option set to 1 and an approval ticket #123:
+
+    /Ticket/Display.html?id=123
+
+is redirected to
+
+    /Approval/Display.html?id=123
+
+=back
+
+=cut
+
+Set($ForceApprovalsView, 0);
+
+=head1 Extra security
+
+=over 4
 
 This is a list of extra security measures to enable that help keep your RT
 safe.  If you don't know what these mean, you should almost certainly leave the
 defaults alone.
 
-    Clickjacking - Enables framekiller javascript and adds an X-Frame-Options:
-                   DENY header to all requests
+=item C<$DisallowExecuteCode>
+
+If set to a true value, the C<ExecuteCode> right will be removed from
+all users, B<including> the superuser.  This is intended for when RT is
+installed into a shared environment where even the superuser should not
+be allowed to run arbitrary Perl code on the server via scrips.
 
 =cut
 
-Set( @ExtraSecurity, qw(Clickjacking) );
+Set($DisallowExecuteCode, 0);
+
+=item C<$Framebusting>
+
+If set to a false value, framekiller javascript will be disabled and the
+X-Frame-Options: DENY header will be suppressed from all responses.
+This disables RT's clickjacking protection.
+
+=cut
+
+Set($Framebusting, 1);
 
 =back
-
 
 =head1 Authorization and user configuration
 
@@ -1759,14 +1811,27 @@ Set($AutoCreate, undef);
 
 =item C<$WebSessionClass>
 
-C<$WebSessionClass> is the class you wish to use for managing
-Sessions.  It defaults to use your SQL database, but if you are using
-MySQL 3.x and plans to use non-ascii Queue names, uncomment and add
-this line to F<RT_SiteConfig.pm> to prevent session corruption.
+C<$WebSessionClass> is the class you wish to use for managing Sessions.
+On mysql and Pg it defaults to use your database, in other cases
+sessions are stored in files using L<Apache::Session::File>. Other
+installed Apache:Session::* modules can be used to store sessions.
+
+    Set($WebSessionClass, "Apache::Session::File");
 
 =cut
 
-# Set($WebSessionClass, "Apache::Session::File");
+Set($WebSessionClass, undef);
+
+=item C<%WebSessionProperties>
+
+C<%WebSessionProperties> is the hash to configure class L</$WebSessionClass>
+in case custom class is used. By default it's empty and values are picked
+depending on the class. Make sure that it's empty if you're using DB as session
+backend.
+
+=cut
+
+Set( %WebSessionProperties );
 
 =item C<$AutoLogoff>
 
@@ -1791,7 +1856,7 @@ Set($LogoutRefresh, 1);
 
 =item C<$WebSecureCookies>
 
-By default, RT's session cookie isn't marked as "secure" Some web
+By default, RT's session cookie isn't marked as "secure". Some web
 browsers will treat secure cookies more carefully than non-secure
 ones, being careful not to write them to disk, only sending them over
 an SSL secured connection, and so on. To enable this behavior, set
@@ -1802,6 +1867,19 @@ connections.
 =cut
 
 Set($WebSecureCookies, 0);
+
+=item C<$WebHttpOnlyCookies>
+
+Default RT's session cookie to not being directly accessible to
+javascript.  The content is still sent during regular and AJAX requests,
+and other cookies are unaffected, but the session-id is less
+programmatically accessible to javascript.  Turning this off should only
+be necessary in situations with odd client-side authentication
+requirements.
+
+=cut
+
+Set($WebHttpOnlyCookies, 1);
 
 =item C<$MinimumPasswordLength>
 
@@ -1910,7 +1988,7 @@ Set($AmbiguousDayInFuture, 0);
 =item C<$DefaultTimeUnitsToHours>
 
 Use this to set the default units for time entry to hours instead of
-minutes.
+minutes.  Note that this only effects entry, not display.
 
 =cut
 
@@ -2072,19 +2150,19 @@ ticket creation>.
 
 =item on_merge
 
-When tickets are merged status of the ticket that merged is changed by
-force to this. It should be one of inactive statuses; 'resolved' or
-its equivalent is most probably the best candidate.
+When tickets are merged, the status of the ticket that was merged
+away is forced to this value.  It should be one of inactive statuses;
+'resolved' or its equivalent is most probably the best candidate.
 
 =item approved
 
-When an approval accepted status of depending tickets changed
-to this value.
+When an approval is accepted, the status of depending tickets will
+be changed to this value.
 
 =item denied
 
-When an approval denied status of depending tickets changed
-to this value.
+When an approval is denied, the status of depending tickets will
+be changed to this value.
 
 =back
 
@@ -2117,19 +2195,23 @@ above.
 =head3 Protecting status changes with rights
 
 A transition or group of transitions can be protected by a specific
-right.
-
-For example:
+right.  Additionally, you can name new right names, which will be added
+to the system to control that transition.  For example, if you wished to
+create a lesser right than ModifyTicket for rejecting tickets, you could
+write:
 
     default => {
         ...
         rights => {
             '* -> deleted'  => 'DeleteTicket',
             '* -> rejected' => 'RejectTicket',
-            '* -> *'        => 'ModifyTicketStatus',
+            '* -> *'        => 'ModifyTicket',
         },
         ...
     },
+
+This would create a new C<RejectTicket> right in the system which you
+could assign to whatever groups you choose.
 
 On the left hand side you can have the following variants:
 
@@ -2165,7 +2247,6 @@ Use the following format to define labels and actions of transitions:
 
     default => {
         ...
-        actions => {
         actions => [
             'new -> open'     => { label => 'Open it', update => 'Respond' },
             'new -> resolved' => { label => 'Resolve', update => 'Comment' },
@@ -2205,7 +2286,8 @@ For example:
 
 Unless there is an explicit mapping between statuses in two different
 lifecycles, you can not move tickets between queues with these
-lifecycles.  Such a mapping is defined as follows:
+lifecycles.  This is true even if the different lifecycles use the exact
+same set of statuses.  Such a mapping is defined as follows:
 
     __maps__ => {
         'from lifecycle -> to lifecycle' => {
@@ -2243,23 +2325,52 @@ Set(%Lifecycles,
         },
         rights => {
             '* -> deleted'  => 'DeleteTicket',
-            '* -> rejected' => 'ModifyTicket',
             '* -> *'        => 'ModifyTicket',
         },
         actions => [
-            'new -> open'      => { label => 'Open It',  update => 'Respond' },
-            'new -> resolved'  => { label => 'Resolve',  update => 'Comment' },
-            'new -> rejected'  => { label => 'Reject',   update => 'Respond' },
-            'new -> deleted'   => { label => 'Delete'                        },
+            'new -> open'      => {
+                label  => 'Open It', # loc
+                update => 'Respond',
+            },
+            'new -> resolved'  => {
+                label  => 'Resolve', # loc
+                update => 'Comment',
+            },
+            'new -> rejected'  => {
+                label  => 'Reject', # loc
+                update => 'Respond',
+            },
+            'new -> deleted'   => {
+                label  => 'Delete', # loc
+            },
 
-            'open -> stalled'  => { label => 'Stall',    update => 'Comment' },
-            'open -> resolved' => { label => 'Resolve',  update => 'Comment' },
-            'open -> rejected' => { label => 'Reject',   update => 'Respond' },
+            'open -> stalled'  => {
+                label  => 'Stall', # loc
+                update => 'Comment',
+            },
+            'open -> resolved' => {
+                label  => 'Resolve', # loc
+                update => 'Comment',
+            },
+            'open -> rejected' => {
+                label  => 'Reject', # loc
+                update => 'Respond',
+            },
 
-            'stalled -> open'  => { label => 'Open It'                       },
-            'resolved -> open' => { label => 'Re-open',  update => 'Comment' },
-            'rejected -> open' => { label => 'Re-open',  update => 'Comment' },
-            'deleted -> open'  => { label => 'Undelete'                      },
+            'stalled -> open'  => {
+                label  => 'Open It', # loc
+            },
+            'resolved -> open' => {
+                label  => 'Re-open', # loc
+                update => 'Comment',
+            },
+            'rejected -> open' => {
+                label  => 'Re-open', # loc
+                update => 'Comment',
+            },
+            'deleted -> open'  => {
+                label  => 'Undelete', # loc
+            },
         ],
     },
 # don't change lifecyle of the approvals, they are not capable to deal with
@@ -2291,19 +2402,49 @@ Set(%Lifecycles,
             '* -> *'        => 'ModifyTicket',
         },
         actions => [
-            'new -> open'      => { label => 'Open It',  update => 'Respond' },
-            'new -> resolved'  => { label => 'Resolve',  update => 'Comment' },
-            'new -> rejected'  => { label => 'Reject',   update => 'Respond' },
-            'new -> deleted'   => { label => 'Delete'                        },
+            'new -> open'      => {
+                label  => 'Open It', # loc
+                update => 'Respond',
+            },
+            'new -> resolved'  => {
+                label  => 'Resolve', # loc
+                update => 'Comment',
+            },
+            'new -> rejected'  => {
+                label  => 'Reject', # loc
+                update => 'Respond',
+            },
+            'new -> deleted'   => {
+                label  => 'Delete', # loc
+            },
 
-            'open -> stalled'  => { label => 'Stall',    update => 'Comment' },
-            'open -> resolved' => { label => 'Resolve',  update => 'Comment' },
-            'open -> rejected' => { label => 'Reject',   update => 'Respond' },
+            'open -> stalled'  => {
+                label  => 'Stall', # loc
+                update => 'Comment',
+            },
+            'open -> resolved' => {
+                label  => 'Resolve', # loc
+                update => 'Comment',
+            },
+            'open -> rejected' => {
+                label  => 'Reject', # loc
+                update => 'Respond',
+            },
 
-            'stalled -> open'  => { label => 'Open It'                       },
-            'resolved -> open' => { label => 'Re-open',  update => 'Comment' },
-            'rejected -> open' => { label => 'Re-open',  update => 'Comment' },
-            'deleted -> open'  => { label => 'Undelete'                      },
+            'stalled -> open'  => {
+                label  => 'Open It', # loc
+            },
+            'resolved -> open' => {
+                label  => 'Re-open', # loc
+                update => 'Comment',
+            },
+            'rejected -> open' => {
+                label  => 'Re-open', # loc
+                update => 'Comment',
+            },
+            'deleted -> open'  => {
+                label  => 'Undelete', # loc
+            },
         ],
     },
 );
@@ -2346,7 +2487,7 @@ Set(%AdminSearchResultFormat,
     Queues =>
         q{'<a href="__WebPath__/Admin/Queues/Modify.html?id=__id__">__id__</a>/TITLE:#'}
         .q{,'<a href="__WebPath__/Admin/Queues/Modify.html?id=__id__">__Name__</a>/TITLE:Name'}
-        .q{,__Description__,__Address__,__Priority__,__DefaultDueIn__,__Disabled__},
+        .q{,__Description__,__Address__,__Priority__,__DefaultDueIn__,'__Disabled__,__Lifecycle__},
 
     Groups =>
         q{'<a href="__WebPath__/Admin/Groups/Modify.html?id=__id__">__id__</a>/TITLE:#'}
@@ -2364,8 +2505,13 @@ Set(%AdminSearchResultFormat,
         .q{,__AppliedTo__, __FriendlyType__, __FriendlyPattern__},
 
     Scrips =>
-        q{'<a href="__WebPath__/__WebRequestPathDir__/Scrip.html?id=__id__&Queue=__QueueId__">__id__</a>/TITLE:#'}
-        .q{,'<a href="__WebPath__/__WebRequestPathDir__/Scrip.html?id=__id__&Queue=__QueueId__">__Description__</a>/TITLE:Description'}
+        q{'<a href="__WebPath__/Admin/Queues/Scrip.html?id=__id__&Queue=__QueueId__">__id__</a>/TITLE:#'}
+        .q{,'<a href="__WebPath__/Admin/Queues/Scrip.html?id=__id__&Queue=__QueueId__">__Description__</a>/TITLE:Description'}
+        .q{,__Stage__, __Condition__, __Action__, __Template__},
+
+    GlobalScrips =>
+        q{'<a href="__WebPath__/Admin/Global/Scrip.html?id=__id__">__id__</a>/TITLE:#'}
+        .q{,'<a href="__WebPath__/Admin/Global/Scrip.html?id=__id__">__Description__</a>/TITLE:Description'}
         .q{,__Stage__, __Condition__, __Action__, __Template__},
 
     Templates =>
@@ -2394,6 +2540,12 @@ convenience for developers, turns on several of development options
 that you most likely don't want in production:
 
 =over 4
+
+=item *
+
+Disables CSS and JS minification and concatenation.  Both CSS and JS
+will be instead be served as a number of individual smaller files,
+unchanged from how they are stored on disk.
 
 =item *
 
@@ -2456,6 +2608,9 @@ RT has rudimentary SQL statement logging support; simply set
 C<$StatementLog> to be the level that you wish SQL statements to be
 logged at.
 
+Enabling this option will also expose the SQL Queries page in the
+Configuration -> Tools menu for SuperUsers.
+
 =cut
 
 Set($StatementLog, undef);
@@ -2483,8 +2638,6 @@ Set($LinkTransactionsRun1Scrip, 0);
 
 This option has been deprecated.  You can configure this site-wide
 with L</Lifecycles> (see L</Labeling and defining actions>).
-
-=back
 
 =cut
 

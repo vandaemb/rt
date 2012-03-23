@@ -3,7 +3,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -209,7 +209,7 @@ sub rosetta {
         die "Is not URL or directory: '$url'";
     }
 
-    my @files = <$dir/rt/*.po>, <$dir/*.po>;
+    my @files = ( <$dir/rt/*.po>, <$dir/*.po> );
     unless ( @files ) {
         print STDERR "No files in $dir/rt/*.po and $dir/*.po\n";
         exit;
@@ -265,6 +265,6 @@ sub rosetta {
 
 sub extract {
     shift;
-    system($^X, 'devel/extract-message-catalog', @_);
+    system($^X, 'devel/tools/extract-message-catalog', @_);
 }
 

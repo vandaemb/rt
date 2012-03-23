@@ -9,9 +9,9 @@ my ($major, $minor) = $RT::Handle->dbh->get_info(18) =~ /^0*(\d+)\.0*(\d+)/;
 plan skip_all => "Need Pg 8.2 or higher; we have $major.$minor"
     if "$major.$minor" < 8.2;
 
-plan tests => 11;
+plan tests => 36;
 
-RT->Config->Set( FullTextSearch => Enable => 1, Indexed => 1 );
+RT->Config->Set( FullTextSearch => Enable => 1, Indexed => 1, Column => 'ContentIndex', Table => 'Attachments' );
 
 setup_indexing();
 
@@ -61,7 +61,7 @@ sub run_test {
 
     my $good_tickets = ($tix->Count == $count);
     while ( my $ticket = $tix->Next ) {
-        next if $checks{ $ticket->Subject };
+        next if $checks{ $ticket->id };
         diag $ticket->Subject ." ticket has been found when it's not expected";
         $good_tickets = 0;
     }
@@ -72,13 +72,47 @@ sub run_test {
 
 @tickets = RT::Test->create_tickets(
     { Queue => $q->id },
-    { Subject => 'book', Content => 'book' },
-    { Subject => 'bar', Content => 'bar' },
+    { Subject => 'fts test 1', Content => 'book' },
+    { Subject => 'fts test 2', Content => 'bars'  },
 );
 sync_index();
 
+my $book = $tickets[0];
+my $bars = $tickets[1];
+
 run_tests(
-    "Content LIKE 'book'" => { book => 1, bar => 0 },
-    "Content LIKE 'bar'" => { book => 0, bar => 1 },
+    "Content LIKE 'book'" => { $book->id => 1, $bars->id => 0 },
+    "Content LIKE 'bars'" => { $book->id => 0, $bars->id => 1 },
+
+    # make sure that Pg stemming works
+    "Content LIKE 'books'" => { $book->id => 1, $bars->id => 0 },
+    "Content LIKE 'bar'"   => { $book->id => 0, $bars->id => 1 },
+
+    # no matches
+    "Content LIKE 'baby'" => { $book->id => 0, $bars->id => 0 },
+    "Content LIKE 'pubs'" => { $book->id => 0, $bars->id => 0 },
 );
 
+# Test the "ts_vector too long" skip
+my $content = "";
+$content .= "$_\n" for 1..200_000;
+@tickets = RT::Test->create_tickets(
+    { Queue => $q->id },
+    { Subject => 'Short content', Content => '50' },
+    { Subject => 'Long content',  Content => $content  },
+    { Subject => 'More short',    Content => '50' },
+);
+
+my ($exit_code, $output) = RT::Test->run_and_capture(
+    command => $RT::SbinPath .'/rt-fulltext-indexer'
+);
+like($output, qr/string is too long for tsvector/, "Got a warning for the ticket");
+ok(!$exit_code, "set up index");
+
+# The long content is skipped entirely
+run_tests(
+    "Content LIKE '1'"  => { $tickets[0]->id => 0, $tickets[1]->id => 0, $tickets[2]->id => 0 },
+    "Content LIKE '50'" => { $tickets[0]->id => 1, $tickets[1]->id => 0, $tickets[2]->id => 1 },
+);
+
+@tickets = ();

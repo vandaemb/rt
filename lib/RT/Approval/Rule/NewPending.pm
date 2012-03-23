@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -93,5 +93,7 @@ sub Commit {
                                MIMEObj => $template->MIMEObj );
 
 }
+
+RT::Base->_ImportOverlays();
 
 1;

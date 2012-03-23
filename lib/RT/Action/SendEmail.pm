@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -165,14 +165,14 @@ sub Prepare {
     # Header
     $self->SetRTSpecialHeaders();
 
-    $self->RemoveInappropriateRecipients();
-
     my %seen;
     foreach my $type (@EMAIL_RECIPIENT_HEADERS) {
         @{ $self->{$type} }
             = grep defined && length && !$seen{ lc $_ }++,
             @{ $self->{$type} };
     }
+
+    $self->RemoveInappropriateRecipients();
 
     # Go add all the Tos, Ccs and Bccs that we need to to the message to
     # make it happy, but only if we actually have values in those arrays.
@@ -408,11 +408,16 @@ sub AddAttachment {
     my $attach  = shift;
     my $MIMEObj = shift || $self->TemplateObj->MIMEObj;
 
+    # ->attach expects just the disposition type; extract it if we have the header
+    my $disp = ($attach->GetHeader('Content-Disposition') || '')
+                    =~ /^\s*(inline|attachment)/i ? $1 : undef;
+
     $MIMEObj->attach(
-        Type     => $attach->ContentType,
-        Charset  => $attach->OriginalEncoding,
-        Data     => $attach->OriginalContent,
-        Filename => $self->MIMEEncodeString( $attach->Filename ),
+        Type        => $attach->ContentType,
+        Charset     => $attach->OriginalEncoding,
+        Data        => $attach->OriginalContent,
+        Disposition => $disp, # a false value defaults to inline in MIME::Entity
+        Filename    => $self->MIMEEncodeString( $attach->Filename ),
         'RT-Attachment:' => $self->TicketObj->Id . "/"
             . $self->TransactionObj->Id . "/"
             . $attach->id,
@@ -608,12 +613,6 @@ sub SetRTSpecialHeaders {
         }
     }
 
-    if (my $precedence = RT->Config->Get('DefaultMailPrecedence')
-        and !$self->TemplateObj->MIMEObj->head->get("Precedence")
-    ) {
-        $self->SetHeader( 'Precedence', $precedence );
-    }
-
     $self->SetHeader( 'X-RT-Loop-Prevention', RT->Config->Get('rtname') );
     $self->SetHeader( 'RT-Ticket',
         RT->Config->Get('rtname') . " #" . $self->TicketObj->id() );
@@ -779,7 +778,7 @@ sub RemoveInappropriateRecipients {
                     foreach my $addr ( @{ $self->{$type} } ) {
                         my $user = RT::User->new(RT->SystemUser);
                         $user->LoadByEmail($addr);
-                        push @blacklist, $addr if ( !$user->Privileged );
+                        push @blacklist, $addr unless $user->id && $user->Privileged;
                     }
                 }
                 $RT::Logger->info( $msgid
@@ -1009,15 +1008,16 @@ Set References and In-Reply-To headers for this message.
 
 sub SetReferencesHeaders {
     my $self = shift;
-    my ( @in_reply_to, @references, @msgid );
 
-    if ( my $top = $self->TransactionObj->Message->First ) {
-        @in_reply_to = split( /\s+/m, $top->GetHeader('In-Reply-To') || '' );
-        @references  = split( /\s+/m, $top->GetHeader('References')  || '' );
-        @msgid       = split( /\s+/m, $top->GetHeader('Message-ID')  || '' );
-    } else {
+    my $top = $self->TransactionObj->Message->First;
+    unless ( $top ) {
+        $self->SetHeader( References => $self->PseudoReference );
         return (undef);
     }
+
+    my @in_reply_to = split( /\s+/m, $top->GetHeader('In-Reply-To') || '' );
+    my @references  = split( /\s+/m, $top->GetHeader('References')  || '' );
+    my @msgid       = split( /\s+/m, $top->GetHeader('Message-ID')  || '' );
 
     # There are two main cases -- this transaction was created with
     # the RT Web UI, and hence we want to *not* append its Message-ID

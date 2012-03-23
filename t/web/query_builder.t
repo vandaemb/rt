@@ -4,7 +4,7 @@ use HTTP::Request::Common;
 use HTTP::Cookies;
 use LWP;
 use Encode;
-use RT::Test tests => 46;
+use RT::Test tests => 70;
 
 my $cookie_jar = HTTP::Cookies->new;
 my ($baseurl, $agent) = RT::Test->started_ok;
@@ -213,10 +213,10 @@ diag "click advanced, enter 'C1 OR ( C2 AND C3 )', apply, aggregators should sta
     ok( $response->is_success, "Fetched " . $url."Search/Build.html" );
 
     ok($agent->form_name('BuildQuery'), "found the form once");
-    $agent->field("ValueOf'CF.{\x{442}}'", "\x{441}");
+    $agent->field("ValueOfCF.{\x{442}}", "\x{441}");
     $agent->submit();
     is( getQueryFromForm($agent),
-        "'CF.{\x{442}}' LIKE '\x{441}'",
+        "CF.{\x{442}} LIKE '\x{441}'",
         "no changes, no duplicate condition with badly encoded text"
     );
 
@@ -252,4 +252,76 @@ diag "send query with not quoted negative number";
         "Priority > -2",
         "query is the same"
     );
+}
+
+diag "click advanced, enter an invalid SQL IS restriction, apply and check that we corrected it";
+{
+    my $response = $agent->get($url."Search/Edit.html");
+    ok( $response->is_success, "Fetched /Search/Edit.html" );
+    ok($agent->form_name('BuildQueryAdvanced'), "found the form");
+    $agent->field("Query", "Requestor.EmailAddress IS 'FOOBAR'");
+    $agent->submit;
+    is( getQueryFromForm($agent),
+        "Requestor.EmailAddress IS NULL",
+        "foobar is replaced by NULL"
+    );
+}
+
+diag "click advanced, enter an invalid SQL IS NOT restriction, apply and check that we corrected it";
+{
+    my $response = $agent->get($url."Search/Edit.html");
+    ok( $response->is_success, "Fetched /Search/Edit.html" );
+    ok($agent->form_name('BuildQueryAdvanced'), "found the form");
+    $agent->field("Query", "Requestor.EmailAddress IS NOT 'FOOBAR'");
+    $agent->submit;
+    is( getQueryFromForm($agent),
+        "Requestor.EmailAddress IS NOT NULL",
+        "foobar is replaced by NULL"
+    );
+}
+
+diag "click advanced, enter a valid SQL, but the field is lower cased";
+{
+    my $response = $agent->get($url."Search/Edit.html");
+    ok( $response->is_success, "Fetched /Search/Edit.html" );
+    ok($agent->form_name('BuildQueryAdvanced'), "found the form");
+    $agent->field("Query", "status = 'new'");
+    $agent->submit;
+    $agent->content_lacks( 'Unknown field:', 'no "unknown field" warning' );
+    is( getQueryFromForm($agent),
+        "Status = 'new'",
+        "field's case is corrected"
+    );
+}
+
+diag "make sure skipped order by field doesn't break search";
+{
+    my $t = RT::Test->create_ticket( Queue => 'General', Subject => 'test' );
+    ok $t && $t->id, 'created a ticket';
+
+    $agent->get_ok($url."Search/Edit.html");
+    ok($agent->form_name('BuildQueryAdvanced'), "found the form");
+    $agent->field("Query", "id = ". $t->id);
+    $agent->submit;
+
+    $agent->follow_link_ok({id => 'page-results'});
+    ok( $agent->find_link(
+        text      => $t->id,
+        url_regex => qr{/Ticket/Display\.html},
+    ), "link to the ticket" );
+
+    $agent->follow_link_ok({id => 'page-edit_search'});
+    $agent->form_name('BuildQuery');
+    $agent->field("OrderBy", 'Requestor.EmailAddress', 3);
+    $agent->submit;
+    $agent->form_name('BuildQuery');
+    is $agent->value('OrderBy', 1), 'id';
+    is $agent->value('OrderBy', 2), '';
+    is $agent->value('OrderBy', 3), 'Requestor.EmailAddress';
+
+    $agent->follow_link_ok({id => 'page-results'});
+    ok( $agent->find_link(
+        text      => $t->id,
+        url_regex => qr{/Ticket/Display\.html},
+    ), "link to the ticket" );
 }

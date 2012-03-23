@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -173,7 +173,7 @@ for my $type (qw/Tickets Queues Transactions Groups PrivilegedUsers Unprivileged
 
 <&|/Widgets/TitleBox, title => loc("Mason template search order") &>
 <ol>
-% foreach my $path ( map { $_->[1] } $m->interp->comp_root_array ) {
+% foreach my $path ( RT::Interface::Web->ComponentRoots ) {
 <li><% $path %></li>
 % }
 </ol>

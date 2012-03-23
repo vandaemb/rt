@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -46,11 +46,13 @@
 %#
 %# END BPS TAGGED BLOCK }}}
 % $r->content_type('application/json');
-<% JSON::to_json( \@suggestions ) |n %>
+<% JSON( \@suggestions ) |n %>
 % $m->abort;
 <%INIT>
-my ($CustomField, $Value);
-$Value = $ARGS{query};
+# Only autocomplete the last value
+my $term = (split /\n/, $ARGS{term} || '')[-1];
+
+my $CustomField;
 for my $k ( keys %ARGS ) {
     next unless $k =~ /^Object-.*?-\d*-CustomField-(\d+)-Values?$/;
     $CustomField = $1;
@@ -60,32 +62,27 @@ for my $k ( keys %ARGS ) {
 $m->abort unless $CustomField;
 my $CustomFieldObj = RT::CustomField->new( $session{'CurrentUser'} );
 $CustomFieldObj->Load( $CustomField );
-my $values = $CustomFieldObj->Values;
 
+my $values = $CustomFieldObj->Values;
 $values->Limit(
     FIELD           => 'Name',
     OPERATOR        => 'LIKE',
-    VALUE           => $Value,
-    SUBCLAUSE       => 'autcomplete',
+    VALUE           => $term,
+    SUBCLAUSE       => 'autocomplete',
+    CASESENSITIVE   => 0,
 );
-
 $values->Limit(
     ENTRYAGGREGATOR => 'OR',
     FIELD           => 'Description',
     OPERATOR        => 'LIKE',
-    VALUE           => $Value,
-    SUBCLAUSE       => 'autcomplete',
+    VALUE           => $term,
+    SUBCLAUSE       => 'autocomplete',
+    CASESENSITIVE   => 0,
 );
 
 my @suggestions;
 
-# in case it accepts multiple values
-my $last_input = (split /\n/, $ARGS{term} || '')[-1];
-
 while( my $value = $values->Next ) {
-    # we need to filter by ourselves to use jqueryui's autocomplete
-    next unless $value->Name =~ /$last_input/i;
-
     push @suggestions,
       {
         value => $value->Name,
@@ -94,6 +91,4 @@ while( my $value = $values->Next ) {
         : $value->Name,
       };
 }
-
-require JSON;
 </%INIT>

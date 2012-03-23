@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -106,7 +106,7 @@ foreach my $arg ( keys %ARGS ) {
 
 my $Tickets = RT::Tickets->new($session{'CurrentUser'});
 $Tickets->LimitOwner(VALUE => $session{'CurrentUser'}->Id);
-$Tickets->LimitStatus( VALUE => $_ ) foreach RT::Queue->ActiveStatusArray;
+$Tickets->LimitToActiveStatus;
 $Tickets->OrderBy ( FIELD => 'Priority', ORDER => 'DESC');
 
 

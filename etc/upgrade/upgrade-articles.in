@@ -3,7 +3,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -226,7 +226,13 @@ sub copy_tables {
 
 { # update Transactions
   # we only keep article transactions at this point
+    no warnings 'once';
     use RT::Transactions;
+    # Next calls Type to check readability and Type calls _Accessible
+    # which called CurrentUserCanSee which calls Object which tries to instantiate
+    # an RT::FM::Article.  Rather than a shim RT::FM::Article class, I'm just avoiding
+    # the ACL check since we're running around as the superuser.
+    local *RT::Transaction::Type = sub { shift->__Value('Type') };
     my $transactions = RT::Transactions->new(RT->SystemUser);
     $transactions->Limit( FIELD => 'ObjectType', VALUE => 'RT::FM::Article' );
     while ( my $t = $transactions->Next ) {

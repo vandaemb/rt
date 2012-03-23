@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -57,6 +57,8 @@ use Regexp::IPv6 qw($IPv6_re);
 use Regexp::Common::net::CIDR;
 require Net::CIDR;
 
+# Allow the empty IPv6 address
+$IPv6_re = qr/(?:$IPv6_re|::)/;
 
 
 

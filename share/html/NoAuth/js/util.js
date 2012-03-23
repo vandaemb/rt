@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -130,8 +130,16 @@ function focusElementById(id) {
 function setCheckbox(form, name, val) {
     var myfield = form.getElementsByTagName('input');
     for ( var i = 0; i < myfield.length; i++ ) {
-        if ( name && myfield[i].name != name ) continue;
         if ( myfield[i].type != 'checkbox' ) continue;
+        if ( name ) {
+            if ( name instanceof RegExp ) {
+                if ( ! myfield[i].name.match( name ) ) continue;
+            }
+            else {
+                if ( myfield[i].name != name ) continue;
+            }
+
+        }
 
         myfield[i].checked = val;
     }

@@ -28,7 +28,6 @@ test "x$rt_version_patch" = 'x' && rt_version_patch=0
 
 dnl Check for programs
 AC_PROG_INSTALL
-AC_PROG_AWK
 AC_ARG_VAR([PERL],[Perl interpreter command])
 AC_PATH_PROG([PERL], [perl], [not found])
 if test "$PERL" = 'not found'; then
@@ -40,7 +39,7 @@ dnl WEB_HANDLER
 AC_ARG_WITH(web-handler,
     AC_HELP_STRING([--with-web-handler=LIST],
 	[comma separated list of web-handlers RT will be able to use.
-         Default is fastcgi when modperl1, modperl2, and fastcgi are valid.
+         Default is fastcgi. Valid values are modperl1, modperl2, fastcgi and standalone.
          To successfully run RT you need only one.
         ]),
     WEB_HANDLER=$withval,
@@ -228,9 +227,15 @@ AC_ARG_WITH(my-user-group,
             WEB_GROUP=$my_group)
 
 # Test for valid database names
+AC_MSG_CHECKING([if database name is set])
+          AS_IF([ echo $DB_DATABASE | $PERL -e 'exit(1) unless <> =~ /\S/' ],
+                [ AC_MSG_RESULT([yes]) ],
+                [ AC_MSG_ERROR([no.  database name is not set]) ]
+               )
+
 AS_IF([ test "$DB_TYPE" = "mysql" ],
       [ AC_MSG_CHECKING([if database name is valid])
-          AS_IF([ echo $DB_DATABASE | $AWK '/-/ { exit 1 }' ],
+          AS_IF([ echo $DB_DATABASE | $PERL -e 'exit(1) if <> =~ /-/'],
                 [ AC_MSG_RESULT([yes]) ],
                 [ AC_MSG_ERROR([no.  database name ($DB_DATABASE) contains '-' which is not valid for mysql]) ]
                )
@@ -300,6 +305,20 @@ else
         RT_GPG="0"
 fi
 AC_SUBST(RT_GPG)
+
+dnl SSL support for RT's mailgate
+AC_ARG_WITH(ssl-mailgate,[],RT_SSL_MAILGATE=$withval,RT_SSL_MAILGATE="0")
+AC_ARG_ENABLE(ssl-mailgate,
+            AC_HELP_STRING([--enable-ssl-mailgate],
+                           [Turns on support for HTTPS in rt-mailgate]),
+            RT_SSL_MAILGATE=$enableval,
+            RT_SSL_MAILGATE=$RT_SSL_MAILGATE)
+if test "$RT_SSL_MAILGATE" = yes; then
+        RT_SSL_MAILGATE="1"
+else
+        RT_SSL_MAILGATE="0"
+fi
+AC_SUBST(RT_SSL_MAILGATE)
 
 
 dnl This section maps the variable names this script 'natively' generates
@@ -395,6 +414,7 @@ AC_CONFIG_FILES([
                  etc/upgrade/upgrade-articles
                  etc/upgrade/vulnerable-passwords
                  sbin/rt-attributes-viewer
+                 sbin/rt-preferences-viewer
                  sbin/rt-session-viewer
                  sbin/rt-dump-metadata
                  sbin/rt-setup-database

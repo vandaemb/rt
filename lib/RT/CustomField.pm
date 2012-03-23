@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -388,22 +388,24 @@ sub Create {
         Repeated    => $args{'Repeated'},
     );
 
-    if ( exists $args{'LinkValueTo'}) {
-	$self->SetLinkValueTo($args{'LinkValueTo'});
+    if ($rv) {
+        if ( exists $args{'LinkValueTo'}) {
+            $self->SetLinkValueTo($args{'LinkValueTo'});
+        }
+
+        if ( exists $args{'IncludeContentForValue'}) {
+            $self->SetIncludeContentForValue($args{'IncludeContentForValue'});
+        }
+
+        return ($rv, $msg) unless exists $args{'Queue'};
+
+        # Compat code -- create a new ObjectCustomField mapping
+        my $OCF = RT::ObjectCustomField->new( $self->CurrentUser );
+        $OCF->Create(
+            CustomField => $self->Id,
+            ObjectId => $args{'Queue'},
+        );
     }
-
-    if ( exists $args{'IncludeContentForValue'}) {
-	$self->SetIncludeContentForValue($args{'IncludeContentForValue'});
-    }
-
-    return ($rv, $msg) unless exists $args{'Queue'};
-
-    # Compat code -- create a new ObjectCustomField mapping
-    my $OCF = RT::ObjectCustomField->new( $self->CurrentUser );
-    $OCF->Create(
-        CustomField => $self->Id,
-        ObjectId => $args{'Queue'},
-    );
 
     return ($rv, $msg);
 }
@@ -587,6 +589,20 @@ sub DeleteValue {
 }
 
 
+=head2 ValidateQueue Queue
+
+Make sure that the name specified is valid
+
+=cut
+
+sub ValidateName {
+    my $self = shift;
+    my $value = shift;
+
+    return 0 unless length $value;
+
+    return $self->SUPER::ValidateName($value);
+}
 
 =head2 ValidateQueue Queue
 
@@ -1024,7 +1040,7 @@ sub DefaultRenderType {
     my $composite    = @_ ? shift : $self->TypeComposite;
     my ($type, $max) = split /-/, $composite, 2;
     return unless $type and $self->HasRenderTypes($composite);
-    return defined $FieldTypes{$type}->{render_types}->{ $max == 1 ? 'single' : 'multiple' }[0];
+    return $FieldTypes{$type}->{render_types}->{ $max == 1 ? 'single' : 'multiple' }[0];
 }
 
 =head2 HasRenderTypes [TYPE_COMPOSITE]

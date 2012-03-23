@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -358,6 +358,12 @@ sub SendEmail {
         return -1;
     }
 
+    if (my $precedence = RT->Config->Get('DefaultMailPrecedence')
+        and !$args{'Entity'}->head->get("Precedence")
+    ) {
+        $args{'Entity'}->head->set( 'Precedence', $precedence );
+    }
+
     if ( $TransactionObj && !$TicketObj
         && $TransactionObj->ObjectType eq 'RT::Ticket' )
     {
@@ -406,8 +412,10 @@ sub SendEmail {
         my $path = RT->Config->Get('SendmailPath');
         my $args = RT->Config->Get('SendmailArguments');
 
-        # SetOutgoingMailFrom
-        if ( RT->Config->Get('SetOutgoingMailFrom') ) {
+        # SetOutgoingMailFrom and bounces conflict, since they both want -f
+        if ( $args{'Bounce'} ) {
+            $args .= ' '. RT->Config->Get('SendmailBounceArguments');
+        } elsif ( RT->Config->Get('SetOutgoingMailFrom') ) {
             my $OutgoingMailAddress;
 
             if ($TicketObj) {
@@ -426,9 +434,6 @@ sub SendEmail {
             $args .= " -f $OutgoingMailAddress"
                 if $OutgoingMailAddress;
         }
-
-        # Set Bounce Arguments
-        $args .= ' '. RT->Config->Get('SendmailBounceArguments') if $args{'Bounce'};
 
         # VERP
         if ( $TransactionObj and
@@ -651,7 +656,8 @@ sub ForwardTicket {
     ) for qw(Create Correspond);
 
     my $entity = MIME::Entity->build(
-        Type => 'multipart/mixed',
+        Type        => 'multipart/mixed',
+        Description => 'forwarded ticket',
     );
     $entity->add_part( $_ ) foreach 
         map $_->ContentAsMIME,
@@ -739,34 +745,55 @@ sub SendForward {
     $mail->head->set( $_ => EncodeToMIME( String => $args{$_} ) )
         foreach grep defined $args{$_}, qw(To Cc Bcc);
 
-    $mail->attach(
-        Type => 'message/rfc822',
-        Disposition => 'attachment',
-        Description => 'forwarded message',
-        Data => $entity->as_string,
-    );
+    $mail->make_multipart unless $mail->is_multipart;
+    $mail->add_part( $entity );
 
     my $from;
-    my $subject = '';
-    $subject = $txn->Subject if $txn;
-    $subject ||= $ticket->Subject if $ticket;
-    if ( RT->Config->Get('ForwardFromUser') ) {
-        $from = ($txn || $ticket)->CurrentUser->UserObj->EmailAddress;
-    } else {
-        # XXX: what if want to forward txn of other object than ticket?
-        $subject = AddSubjectTag( $subject, $ticket );
-        $from = $ticket->QueueObj->CorrespondAddress
-            || RT->Config->Get('CorrespondAddress');
+    unless (defined $mail->head->get('Subject')) {
+        my $subject = '';
+        $subject = $txn->Subject if $txn;
+        $subject ||= $ticket->Subject if $ticket;
+
+        unless ( RT->Config->Get('ForwardFromUser') ) {
+            # XXX: what if want to forward txn of other object than ticket?
+            $subject = AddSubjectTag( $subject, $ticket );
+        }
+
+        $mail->head->set( Subject => EncodeToMIME( String => "Fwd: $subject" ) );
     }
-    $mail->head->set( Subject => EncodeToMIME( String => "Fwd: $subject" ) );
-    $mail->head->set( From    => EncodeToMIME( String => $from ) );
+
+    $mail->head->set(
+        From => EncodeToMIME(
+            String => GetForwardFrom( Transaction => $txn, Ticket => $ticket )
+        )
+    );
 
     my $status = RT->Config->Get('ForwardFromUser')
         # never sign if we forward from User
         ? SendEmail( %args, Entity => $mail, Sign => 0 )
         : SendEmail( %args, Entity => $mail );
     return (0, $ticket->loc("Couldn't send email")) unless $status;
-    return (1, $ticket->loc("Send email successfully"));
+    return (1, $ticket->loc("Sent email successfully"));
+}
+
+=head2 GetForwardFrom Ticket => undef, Transaction => undef
+
+Resolve the From field to use in forward mail
+
+=cut
+
+sub GetForwardFrom {
+    my %args   = ( Ticket => undef, Transaction => undef, @_ );
+    my $txn    = $args{Transaction};
+    my $ticket = $args{Ticket} || $txn->Object;
+
+    if ( RT->Config->Get('ForwardFromUser') ) {
+        return ( $txn || $ticket )->CurrentUser->UserObj->EmailAddress;
+    }
+    else {
+        return $ticket->QueueObj->CorrespondAddress
+          || RT->Config->Get('CorrespondAddress');
+    }
 }
 
 =head2 SignEncrypt Entity => undef, Sign => 0, Encrypt => 0
@@ -1190,13 +1217,15 @@ sub ParseTicketId {
     my $rtname = RT->Config->Get('rtname');
     my $test_name = RT->Config->Get('EmailSubjectTagRegex') || qr/\Q$rtname\E/i;
 
+    # We use @captures and pull out the last capture value to guard against
+    # someone using (...) instead of (?:...) in $EmailSubjectTagRegex.
     my $id;
-    if ( $Subject =~ s/\[$test_name\s+\#(\d+)\s*\]//i ) {
-        $id = $1;
+    if ( my @captures = $Subject =~ /\[$test_name\s+\#(\d+)\s*\]/i ) {
+        $id = $captures[-1];
     } else {
         foreach my $tag ( RT->System->SubjectTag ) {
-            next unless $Subject =~ s/\[\Q$tag\E\s+\#(\d+)\s*\]//i;
-            $id = $1;
+            next unless my @captures = $Subject =~ /\[\Q$tag\E\s+\#(\d+)\s*\]/i;
+            $id = $captures[-1];
             last;
         }
     }
@@ -1787,7 +1816,7 @@ sub _HandleMachineGeneratedMail {
     # Squelch replies if necessary
     # Don't let the user stuff the RT-Squelch-Replies-To header.
     if ( $head->get('RT-Squelch-Replies-To') ) {
-        $head->add(
+        $head->replace(
             'RT-Relocated-Squelch-Replies-To',
             $head->get('RT-Squelch-Replies-To')
         );
@@ -1802,8 +1831,8 @@ sub _HandleMachineGeneratedMail {
         # to the scrip. We might want to notify nobody. Or just
         # the RT Owner. Or maybe all Privileged watchers.
         my ( $Sender, $junk ) = ParseSenderAddressFromHead($head);
-        $head->add( 'RT-Squelch-Replies-To',    $Sender );
-        $head->add( 'RT-DetectedAutoGenerated', 'true' );
+        $head->replace( 'RT-Squelch-Replies-To',    $Sender );
+        $head->replace( 'RT-DetectedAutoGenerated', 'true' );
     }
     return ( 1, $ErrorsTo, "Handled machine detection", $IsALoop );
 }

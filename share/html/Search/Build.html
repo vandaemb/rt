@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -66,7 +66,7 @@
 %#   action does quote it (this breaks SQLite).
 %#
 <& /Elements/Header, Title => $title &>
-<& /Elements/Tabs, QueryString => $QueryString &>
+<& /Elements/Tabs, %TabArgs &>
 
 <form method="post" action="Build.html" name="BuildQuery" id="BuildQuery">
 <input type="hidden" class="hidden" name="SavedSearchId" value="<% $saved_search{'Id'} %>" />
@@ -78,10 +78,10 @@
 
 
 <div id="pick-criteria">
-    <& Elements/PickCriteria, query => $query{'Query'}, cfqueues => $queues &>
+    <& Elements/PickCriteria, query => $query{'Query'}, queues => $queues &>
 </div>
-<& /Elements/Submit,  Label => loc('Add these terms'), Name => 'AddClause'&>
-<& /Elements/Submit, Label => loc('Add these terms and Search'), Name => 'DoSearch'&>
+<& /Elements/Submit,  Label => loc('Add these terms'), SubmitId => 'AddClause', Name => 'AddClause'&>
+<& /Elements/Submit, Label => loc('Add these terms and Search'), SubmitId => 'DoSearch', Name => 'DoSearch'&>
 
 
 <div id="editquery">
@@ -179,6 +179,7 @@ if ( @parse_results ) {
         Query => $query{'Query'},
         Format => $query{'Format'},
         SavedSearchId => $saved_search{'Id'},
+        SavedChartSearchId => $ARGS{'SavedChartSearchId'},
         actions => \@actions,
     );
 }
@@ -189,7 +190,7 @@ my @new_values = ();
 
 # Try to find if we're adding a clause
 foreach my $arg ( keys %ARGS ) {
-    next unless $arg =~ m/^ValueOf(\w+|'CF.{.*?}')$/
+    next unless $arg =~ m/^ValueOf(\w+|CF.{.*?})$/
                 && ( ref $ARGS{$arg} eq "ARRAY"
                      ? grep $_ ne '', @{ $ARGS{$arg} }
                      : $ARGS{$arg} ne '' );
@@ -219,6 +220,7 @@ foreach my $arg ( keys %ARGS ) {
     for ( my $i = 0; $i < @ops; $i++ ) {
         my ( $op, $value ) = ( $ops[$i], $values[$i] );
         next if !defined $value || $value eq '';
+        my $rawvalue = $value;
 
         if ( $value eq 'NULL' && $op =~ /=/ ) {
             if ( $op eq '=' ) {
@@ -227,20 +229,21 @@ foreach my $arg ( keys %ARGS ) {
             elsif ( $op eq '!=' ) {
                 $op = "IS NOT";
             }
-
-            # This isn't "right", but...
-            # It has to be this way until #5182 is fixed
-            $value = "'NULL'";
         }
-        else {
-            $value =~ s/'/\\'/g;
-            $value = "'$value'" unless $value =~ /^\d+$/;
+        elsif ($value =~ /\D/) {
+            $value =~ s/(['\\])/\\$1/g;
+            $value = "'$value'";
+        }
+
+        if ($keyword =~ s/(['\\])/\\$1/g or $keyword =~ /\s/) {
+            $keyword = "'$keyword'";
         }
 
         my $clause = {
             Key   => $keyword,
             Op    => $op,
-            Value => $value
+            Value => $value,
+            RawValue => $rawvalue,
         };
 
         push @new_values, RT::Interface::Web::QueryBuilder::Tree->new($clause);
@@ -272,13 +275,19 @@ my ( $AvailableColumns, $CurrentFormat );
 ( $query{'Format'}, $AvailableColumns, $CurrentFormat ) = $m->comp(
     'Elements/BuildFormatString',
     %ARGS,
-    cfqueues => $queues,
+    queues => $queues,
     Format => $query{'Format'},
 );
 
 
 # if we're asked to save the current search, save it
 push @actions, $m->comp( 'Elements/EditSearches:Save', %ARGS, Query => \%query, SavedSearch => \%saved_search);
+
+# Populate the "query" context with saved search data
+
+if ($ARGS{SavedSearchSave}) {
+    $query{'SavedSearchId'} = $saved_search{'Id'};
+}
 
 # Push the updates into the session so we don't lose 'em
 
@@ -293,20 +302,25 @@ $session{'CurrentSearchHash'} = {
 # Show the results, if we were asked.
 
 if ( $ARGS{'DoSearch'} ) {
-    $m->comp( 'Results.html', %query, SavedChartSearchId => $ARGS{'SavedChartSearchId'}, );
-    $m->comp( '/Elements/Footer' );
+    my $redir_query_string = $m->comp(
+        '/Elements/QueryString',
+        %query,
+        SavedChartSearchId => $ARGS{'SavedChartSearchId'},
+        SavedSearchId => $saved_search{'Id'},
+    );
+    RT::Interface::Web::Redirect(RT->Config->Get('WebPath') . '/Search/Results.html?' . $redir_query_string);
     $m->abort;
 }
 
 
 # Build a querystring for the tabs
 
-my $QueryString = '';
+my %TabArgs = ();
 if ($NewQuery) {
-    $QueryString = 'NewQuery=1';
+    $TabArgs{QueryString} = 'NewQuery=1';
 }
 elsif ( $query{'Query'} ) {
-    $QueryString = $m->comp('/Elements/QueryString', %query );
+    $TabArgs{QueryArgs} = \%query;
 }
 
 </%INIT>
