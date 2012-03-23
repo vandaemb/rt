@@ -191,10 +191,6 @@ create table CachedGroupMembers (
         id int auto_increment,
         GroupId int NOT NULL, # foreign key to Principals
         MemberId int NOT NULL, # foreign key to Principals
-        Via int, #foreign key to CachedGroupMembers. (may point to $self->id)
-        ImmediateParentId int, #foreign key to prinicpals.
-                               # this points to the group that the member is
-                               # a member of, for ease of deletes.
         Disabled int2 NOT NULL DEFAULT 0 , # if this cached group member is a member of this group by way of a disabled
                                            # group or this group is disabled, this will be set to 1
                                            # this allows us to not find members of disabled subgroups when listing off

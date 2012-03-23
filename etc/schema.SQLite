@@ -202,8 +202,6 @@ create table CachedGroupMembers (
         id integer primary key ,
         GroupId int NOT NULL,
         MemberId int NOT NULL,
-        Via int, 
-        ImmediateParentId int,
         Disabled int2 NOT NULL DEFAULT 0  # if this cached group member is a member of this group by way of a disabled
                                            # group or this group is disabled, this will be set to 1
                                            # this allows us to not find members of disabled subgroups when listing off

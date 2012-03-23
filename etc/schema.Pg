@@ -313,8 +313,6 @@ CREATE TABLE CachedGroupMembers (
         id int DEFAULT nextval('cachedgroupmembers_id_seq'),
         GroupId int NOT NULL,
         MemberId int NOT NULL,
-        Via int, 
-        ImmediateParentId int, 
         Disabled integer NOT NULL DEFAULT 0 , 
         PRIMARY KEY (id)
 

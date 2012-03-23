@@ -188,8 +188,6 @@ CREATE TABLE CachedGroupMembers (
 		CONSTRAINT CachedGroupMembers_Key PRIMARY KEY,
 	GroupId		NUMBER(11,0) NOT NULL,
 	MemberId	NUMBER(11,0) NOT NULL,
-	Via		NUMBER(11,0),
-	ImmediateParentId	NUMBER(11,0),
 	Disabled	NUMBER(11,0) DEFAULT 0 NOT NULL
 );
 CREATE INDEX DisGrouMem ON CachedGroupMembers (GroupId, MemberId, Disabled);
