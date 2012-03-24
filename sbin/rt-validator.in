@@ -533,6 +533,74 @@ END
     }
 };
 
+# Disabled in CGM
+push @CHECKS, 'Disabled in CGM' => sub {
+    # make sure every disabled group forms disabled CGM records
+    check_integrity(
+        Principals         => ['id'],
+        CachedGroupMembers => ['GroupId'],
+        condition          => "s.PrincipalType = ? AND s.Disabled != 0",
+        join_condition     => "t.Disabled != 0",
+        bind_values        => ['Group'],
+        action             => sub {
+            my $id = shift;
+            return unless prompt(
+                'Update',
+                "Found not disabled record in CachedGroupMembers for a disabled group."
+            );
+
+            update_records('CachedGroupMembers', { GroupId => $id }, { Disabled => 1 });
+        },
+    );
+    # make sure every enabled group has enabled (G,G) record in CGM
+    check_integrity(
+        Principals         => ['id', 'id'],
+        CachedGroupMembers => ['GroupId', 'MemberId'],
+        condition          => "s.PrincipalType = ? AND s.Disabled = 0",
+        join_condition     => "t.Disabled = 0",
+        bind_values        => ['Group'],
+        action             => sub {
+            my $id = shift;
+            return unless prompt(
+                'Update',
+                "Found enabled group when loop record in CachedGroupMembers is disabled."
+            );
+
+            update_records('CachedGroupMembers', { GroupId => $id, MemberId => $id }, { Disabled => 0 });
+        },
+    );
+    # make sure every GM record with enabled group has enabled CGM record
+    {
+         my $query = <<END;
+SELECT GM.GroupId, GM.MemberId
+FROM GroupMembers GM, Principals p
+WHERE   p.id = GM.GroupId
+    AND p.Disabled = 0
+    AND NOT EXISTS (
+        SELECT 1 FROM CachedGroupMembers CGM
+        WHERE CGM.GroupId = GM.GroupId
+            AND CGM.MemberId = GM.MemberId
+            AND CGM.Disabled = 0
+    )
+END
+        my $sth = execute_query( $query );
+        while ( my ($g, $m) = $sth->fetchrow_array ) {
+            print STDERR "CGM ($g, $m) is not active while it should be\n";
+            next unless prompt(
+                'Update',
+                "Missing records in CachedGroupMembers."
+            );
+            update_records('CachedGroupMembers',
+                { GroupId => $g, MemberId => $m },
+                { Disabled => 0 }
+            );
+        }
+    }
+
+    # now time to deal with indirect CGM records
+    # TODO.
+};
+
 # Tickets
 push @CHECKS, 'Tickets -> other' => sub {
     check_integrity(
