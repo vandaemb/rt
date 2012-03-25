@@ -745,7 +745,7 @@ delete records where:
 
 =item * exists equivalent CGM->GM pair
 
-=over
+=back
 
 Query with most conditions in one NOT EXISTS subquery:
 
