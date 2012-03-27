@@ -190,9 +190,8 @@ CREATE TABLE CachedGroupMembers (
 	MemberId	NUMBER(11,0) NOT NULL,
 	Disabled	NUMBER(11,0) DEFAULT 0 NOT NULL
 );
-CREATE INDEX DisGrouMem ON CachedGroupMembers (GroupId, MemberId, Disabled);
-CREATE INDEX GrouMem ON CachedGroupMembers (GroupId, MemberId);
-CREATE INDEX CachedGroupMembers3 on CachedGroupMembers (MemberId, ImmediateParentId);
+CREATE UNIQUE INDEX CGM1 ON CachedGroupMembers (GroupId, MemberId, Disabled);
+CREATE UNIQUE INDEX CGM2 ON CachedGroupMembers (MemberId, GroupId, Disabled);
 
 
 CREATE SEQUENCE USERS_seq;

@@ -201,8 +201,8 @@ create table CachedGroupMembers (
 
 # we can create UNIQUE ON (GroupId,MemberId), but it only a few bytes shorter than
 # the following and there is no need to do that
-CREATE UNIQUE INDEX DisGrouMem  on CachedGroupMembers (GroupId,MemberId,Disabled);
-CREATE UNIQUE INDEX CachedGroupMembers3  on CachedGroupMembers (MemberId,GroupId,Disabled);
+CREATE UNIQUE INDEX CGM1 ON CachedGroupMembers (GroupId,MemberId,Disabled);
+CREATE UNIQUE INDEX CGM2 ON CachedGroupMembers (MemberId,GroupId,Disabled);
 
 
 CREATE TABLE Users (

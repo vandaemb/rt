@@ -835,10 +835,40 @@ Now we can re-enable records which still have active paths:
 
 Enabling records is much easier, just update all candidates.
 
+=head2 INDEXING
+
+=head3 Access patterns
+
+We either have group and want members, have member and want groups or
+have both and check existance.
+
+Disabled column has low selectivity.
+
+=head3 Index access without table access
+
+Some databases can access index by prefix and use rest as data source, so
+multi column indexes improve performance.
+
+This works on L<mysql (see "using index")|http://dev.mysql.com/doc/refman/5.1/en/explain-output.html#explain-output-columns>
+and L<Oracle|http://docs.oracle.com/cd/A58617_01/server.804/a58246/access.htm#2174>.
+
+This doesn't work for Pg, but L<comes in 9.2|http://rhaas.blogspot.com/2011/10/fast-counting.html>.
+
+=head3 Indexes
+
+For Oracle, mysql and SQLite:
+
+    UNIQUE ON (GroupId, MemberId, Disabled)
+    UNIQUE ON (MemberId, GroupId, Disabled)
+
+For Pg:
+
+    UNIQUE ON (GroupId, MemberId)
+    (MemberId)
+
 =head2 TODO
 
-Update rt-validator and shredder. Review indexes on all databases.
-Create upgrade script.
+Update shredder.
 
 =head2 What's next
 

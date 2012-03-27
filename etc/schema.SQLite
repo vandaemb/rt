@@ -208,8 +208,10 @@ create table CachedGroupMembers (
                                            # group members recursively.
                                            # Also, this allows us to have the ACL system elide members of disabled groups
 
-        
 ) ;
+
+CREATE UNIQUE INDEX CGM1 ON CachedGroupMembers (GroupId,MemberId,Disabled);
+CREATE UNIQUE INDEX CGM2 ON CachedGroupMembers (MemberId,GroupId,Disabled);
 
 --- }}}
 

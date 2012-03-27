@@ -318,13 +318,8 @@ CREATE TABLE CachedGroupMembers (
 
 );
 
-CREATE INDEX CachedGroupMembers2 on CachedGroupMembers (MemberId);
-CREATE INDEX CachedGroupMembers3 on CachedGroupMembers (GroupId);
-CREATE INDEX DisGrouMem  on CachedGroupMembers (GroupId,MemberId,Disabled); 
-
-
-
-
+CREATE UNIQUE INDEX CGM1 ON CachedGroupMembers (GroupId,MemberId);
+CREATE INDEX CGM2 ON CachedGroupMembers (MemberId);
 
 
 
