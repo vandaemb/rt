@@ -1075,6 +1075,43 @@ sub clean_caught_mails {
     unlink $tmp{'mailbox'};
 }
 
+my $validator_path = "$RT::SbinPath/rt-validator";
+sub run_validator {
+    my $self = shift;
+    my %args = (check => 1, resolve => 0, force => 1, @_ );
+
+    my $cmd = $validator_path;
+    die "Couldn't find $cmd command" unless -f $cmd;
+
+    while( my ($k,$v) = each %args ) {
+        next unless $v;
+        $cmd .= " --$k '$v'";
+    }
+    $cmd .= ' 2>&1';
+
+    require IPC::Open2;
+    my ($child_out, $child_in);
+    my $pid = IPC::Open2::open2($child_out, $child_in, $cmd);
+    close $child_in;
+
+    my $result = do { local $/; <$child_out> };
+    close $child_out;
+    waitpid $pid, 0;
+
+    DBIx::SearchBuilder::Record::Cachable->FlushCache
+        if $args{'resolve'};
+
+    return ($?, $result);
+}
+
+sub db_is_valid {
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+    my $self = shift;
+    my ($ecode, $res) = $self->run_validator;
+    Test::More::is( $res, '', 'no invalid records' );
+}
+
 =head2 get_relocatable_dir
 
 Takes a path relative to the location of the test file that is being
