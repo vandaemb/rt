@@ -1109,7 +1109,8 @@ sub db_is_valid {
 
     my $self = shift;
     my ($ecode, $res) = $self->run_validator;
-    Test::More::is( $res, '', 'no invalid records' );
+    Test::More::is( $ecode, 0, 'no invalid records' )
+        or Test::More::diag "errors:\n$res";
 }
 
 =head2 get_relocatable_dir
