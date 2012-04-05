@@ -548,7 +548,7 @@ END
 # Disabled in CGM
 push @CHECKS, 'Disabled in CGM' => sub {
     my $res = 1;
-    # make sure every disabled group forms disabled CGM records
+    # make sure every disabled group forms only disabled CGM records
     $res *= check_integrity(
         Principals         => ['id'],
         CachedGroupMembers => ['GroupId'],
@@ -611,9 +611,86 @@ END
         }
     }
 
-    # now time to deal with indirect CGM records
-    # TODO.
+    # make sure every active CGM that is not real GM has
+    # active joint
+    {
+         my $query = <<END;
+SELECT CGM.GroupId, CGM.MemberId
+FROM CachedGroupMembers CGM
+WHERE   CGM.Disabled = 0
+    AND CGM.GroupId != CGM.MemberId
+    AND NOT EXISTS (
+        SELECT 1 FROM GroupMembers GM
+        WHERE GM.GroupId = CGM.GroupId
+            AND GM.MemberId = CGM.MemberId
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM CachedGroupMembers CGML, CachedGroupMembers CGMR
+        WHERE
+                CGML.GroupId = CGM.GroupId
+            AND CGML.MemberId = CGMR.GroupId
+            AND CGMR.MemberId = CGM.MemberId
 
+            AND CGML.Disabled = 0
+            AND CGMR.Disabled = 0
+
+            AND CGML.GroupId != CGML.MemberId
+            AND CGMR.GroupId != CGMR.MemberId
+    )
+END
+        my $sth = execute_query( $query );
+        while ( my ($g, $m) = $sth->fetchrow_array ) {
+            $res = 0;
+            print STDERR "CGM ($g, $m) is active while it should not be\n";
+            next unless prompt(
+                'Update',
+                "Active records in CachedGroupMembers."
+            );
+            update_records('CachedGroupMembers',
+                { GroupId => $g, MemberId => $m },
+                { Disabled => 1 }
+            );
+        }
+    }
+
+    # escape if we had problems
+    return $res unless $res;
+
+    # make sure every inactive CGM don't have active joint
+    {
+         my $query = <<END;
+SELECT CGM.GroupId, CGM.MemberId
+FROM CachedGroupMembers CGM
+WHERE   CGM.Disabled != 0
+    AND CGM.GroupId != CGM.MemberId
+    AND EXISTS (
+        SELECT 1 FROM CachedGroupMembers CGML, CachedGroupMembers CGMR
+        WHERE
+                CGML.GroupId = CGM.GroupId
+            AND CGML.MemberId = CGMR.GroupId
+            AND CGMR.MemberId = CGM.MemberId
+
+            AND CGML.Disabled = 0
+            AND CGMR.Disabled = 0
+
+            AND CGML.GroupId != CGML.MemberId
+            AND CGMR.GroupId != CGMR.MemberId
+    )
+END
+        my $sth = execute_query( $query );
+        while ( my ($g, $m) = $sth->fetchrow_array ) {
+            $res = 0;
+            print STDERR "CGM ($g, $m) is not active while it should be\n";
+            next unless prompt(
+                'Update',
+                "Inactive records in CachedGroupMembers."
+            );
+            update_records('CachedGroupMembers',
+                { GroupId => $g, MemberId => $m },
+                { Disabled => 0 }
+            );
+        }
+    }
     return $res;
 };
 
