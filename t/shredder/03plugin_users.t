@@ -3,15 +3,7 @@ use strict;
 use warnings;
 
 use Test::Deep;
-use File::Spec;
-use Test::More tests => 9;
-use RT::Test nodb => 1;
-BEGIN {
-    my $shredder_utils = RT::Test::get_relocatable_file('utils.pl',
-        File::Spec->curdir());
-    require $shredder_utils;
-}
-
+use RT::Test::Shredder nodb => 1, tests => 9;
 
 my @ARGS = sort qw(limit status name member_of email replace_relations no_tickets);
 
