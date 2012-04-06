@@ -1,15 +1,11 @@
-
 use strict;
 use warnings;
 
+package RT::Test::Shredder;
+use base 'RT::Test';
+
 require File::Copy;
 require Cwd;
-require RT::Test;
-
-BEGIN {
-### after:     push @INC, qw(@RT_LIB_PATH@);
-}
-use RT::Shredder;
 
 =head1 DESCRIPTION
 
@@ -58,6 +54,14 @@ All tests follow this algorithm:
 
 Savepoints are named and you can create two or more savepoints.
 
+=cut
+
+sub import {
+    my $class = shift;
+    $class->SUPER::import(@_);
+    $class->export_to_level(1);
+}
+
 =head1 FUNCTIONS
 
 =head2 RT CONFIG
@@ -69,99 +73,31 @@ options necessary to switch to a local SQLite database.
 
 =cut
 
-sub rewrite_rtconfig
-{
-    # database
-    config_set( '$DatabaseType'       , 'SQLite' );
-    config_set( '$DatabaseHost'       , 'localhost' );
-    config_set( '$DatabaseRTHost'     , 'localhost' );
-    config_set( '$DatabasePort'       , '' );
-    config_set( '$DatabaseUser'       , 'rt_user' );
-    config_set( '$DatabasePassword'   , 'rt_pass' );
-    config_set( '$DatabaseRequireSSL' , undef );
-    # database file name
-    config_set( '$DatabaseName'       , db_name() );
+sub bootstrap_more_config {
+    my $self = shift;
+    my $config = shift;
 
-    # generic logging
-    config_set( '$LogToSyslog'    , undef );
-    config_set( '$LogToSTDERR'    , 'error' );
-    config_set( '$LogStackTraces' , 'crit' );
-    # logging to standalone file
-    config_set( '$LogToFile'      , 'debug' );
-    my $fname = File::Spec->catfile(RT::Test->temp_directory(), test_name() .".log");
-    config_set( '$LogToFileNamed' , $fname );
-    config_set('@LexiconLanguages', qw(en));
-}
+    print $config <<'END';
+Set($DatabaseType       , 'SQLite');
+Set($DatabaseHost       , 'localhost' );
+Set($DatabaseRTHost     , 'localhost' );
+Set($DatabasePort       , '' );
+END
 
-=head3 config_set
-
-This sub is a helper used by C<rewrite_rtconfig>. You shouldn't
-need to use it elsewhere unless you need to change other RT
-configuration variables.
-
-=cut
-
-sub config_set {
-    my $opt = shift;
-    $opt =~ s/^[\$\%\@]//;
-    RT->Config->Set($opt, @_)
+    print $config "Set(\$DatabaseName, '". $self->db_name ."');\n";
+    return;
 }
 
 =head2 DATABASES
 
-=head3 init_db
-
-Creates a new RT DB with initial data in a new test tmp dir.
-Also runs RT::Init() and RT::InitLogging().
-
-This is all you need to call to setup a testing environment
-in most situations.
-
-=cut
-
-sub init_db
-{
-    RT::Test->bootstrap_tempdir() unless RT::Test->temp_directory();
-    RT::LoadConfig();
-    rewrite_rtconfig();
-    RT::InitLogging();
-
-    _init_db();
-
-    RT::Init();
-    $SIG{__WARN__} = sub { $RT::Logger->warning( @_ ); warn @_ };
-    $SIG{__DIE__} = sub { $RT::Logger->crit( @_ ) unless $^S; die @_ };
-}
-
-use IPC::Open2;
-sub _init_db
-{
-
-
-    foreach ( qw(Type Host Port Name User Password) ) {
-        $ENV{ "RT_DB_". uc $_ } = RT->Config->Get("Database$_");
-    }
-    my $rt_setup_database = RT::Test::get_relocatable_file(
-        'rt-setup-database', (File::Spec->updir(), File::Spec->updir(), 'sbin'));
-    my $cmd =  "$^X $rt_setup_database --action init 2>&1";
-
-    my ($child_out, $child_in);
-    my $pid = open2($child_out, $child_in, $cmd);
-    close $child_in;
-    my $result = do { local $/; <$child_out> };
-    return $result;
-}
-
 =head3 db_name
 
 Returns the absolute file path to the current DB.
-It is <<RT::Test->temp_directory . test_name() .'.db'>>.
-
-See also the C<test_name> function.
+It is C<<RT::Test->temp_directory . 'main.db'>>.
 
 =cut
 
-sub db_name { return File::Spec->catfile(RT::Test->temp_directory(), test_name() .".db") }
+sub db_name { return File::Spec->catfile((shift)->temp_directory, "main.db") }
 
 =head3 connect_sqlite
 
@@ -173,6 +109,7 @@ Takes path to sqlite db.
 
 sub connect_sqlite
 {
+    my $self = shift;
     return DBI->connect("dbi:SQLite:dbname=". shift, "", "");
 }
 
@@ -186,9 +123,12 @@ Creates and returns a new RT::Shredder object.
 
 sub shredder_new
 {
+    my $self = shift;
+
+    require RT::Shredder;
     my $obj = RT::Shredder->new;
 
-    my $file = File::Spec->catfile( RT::Test->temp_directory, test_name() .'.XXXX.sql' );
+    my $file = File::Spec->catfile( $self->temp_directory, 'dump.XXXX.sql' );
     $obj->AddDumpPlugin( Arguments => {
         file_name    => $file,
         from_storage => 0,
@@ -197,25 +137,6 @@ sub shredder_new
     return $obj;
 }
 
-
-=head2 TEST FILES
-
-=head3 test_name
-
-Returns name of the test file running now with file extension and
-directory names stripped.
-
-For example, it returns '00load' for the test file 't/00load.t'.
-
-=cut
-
-sub test_name
-{
-    my $name = $0;
-    $name =~ s/^.*[\\\/]//;
-    $name =~ s/\..*$//;
-    return $name;
-}
 
 =head2 SAVEPOINTS
 
@@ -228,8 +149,9 @@ Takes one argument - savepoint name, by default C<sp>.
 
 sub savepoint_name
 {
-    my $name = shift || 'sp';
-    return File::Spec->catfile( RT::Test->temp_directory, test_name() .".$name.db" );
+    my $self  = shift;
+    my $name = shift || 'default';
+    return File::Spec->catfile( $self->temp_directory, "sp.$name.db" );
 }
 
 =head3 create_savepoint
@@ -244,10 +166,17 @@ Takes name of the savepoint as argument.
 
 =cut
 
-sub create_savepoint { return __cp_db( db_name() => savepoint_name( shift ) ) }
-sub restore_savepoint { return __cp_db( savepoint_name( shift ) => db_name() ) }
+sub create_savepoint {
+    my $self = shift;
+    return $self->__cp_db( $self->db_name => $self->savepoint_name( shift ) );
+}
+sub restore_savepoint {
+    my $self = shift;
+    return $self->__cp_db( $self->savepoint_name( shift ) => $self->db_name );
+}
 sub __cp_db
 {
+    my $self  = shift;
     my( $orig, $dest ) = @_;
     RT::Test::__disconnect_rt();
     File::Copy::copy( $orig, $dest ) or die "Couldn't copy '$orig' => '$dest': $!";
@@ -276,6 +205,7 @@ dump. True by default.
 
 sub dump_sqlite
 {
+    my $self = shift;
     my $dbh = shift;
     my %args = ( CleanDates => 1, @_ );
 
@@ -288,8 +218,10 @@ sub dump_sqlite
     my $res = {};
     foreach my $t( @tables ) {
         next if lc($t) eq 'sessions';
-        $res->{$t} = $dbh->selectall_hashref("SELECT * FROM $t".dump_sqlite_exceptions($t), 'id');
-        clean_dates( $res->{$t} ) if $args{'CleanDates'};
+        $res->{$t} = $dbh->selectall_hashref(
+            "SELECT * FROM $t". $self->dump_sqlite_exceptions($t), 'id'
+        );
+        $self->clean_dates( $res->{$t} ) if $args{'CleanDates'};
         die $DBI::err if $DBI::err;
     }
 
@@ -308,6 +240,7 @@ Shredder to be updating this at some point in the future.
 =cut
 
 sub dump_sqlite_exceptions {
+    my $self = shift;
     my $table = shift;
 
     my $special_wheres = {
@@ -327,10 +260,11 @@ Takes one argument - savepoint name.
 
 sub dump_current_and_savepoint
 {
-    my $orig = savepoint_name( shift );
+    my $self = shift;
+    my $orig = $self->savepoint_name( shift );
     die "Couldn't find savepoint file" unless -f $orig && -r _;
-    my $odbh = connect_sqlite( $orig );
-    return ( dump_sqlite( $RT::Handle->dbh, @_ ), dump_sqlite( $odbh, @_ ) );
+    my $odbh = $self->connect_sqlite( $orig );
+    return ( $self->dump_sqlite( $RT::Handle->dbh, @_ ), $self->dump_sqlite( $odbh, @_ ) );
 }
 
 =head3 dump_savepoint_and_current
@@ -340,10 +274,11 @@ but in reversed order.
 
 =cut
 
-sub dump_savepoint_and_current { return reverse dump_current_and_savepoint(@_) }
+sub dump_savepoint_and_current { return reverse (shift)->dump_current_and_savepoint(@_) }
 
 sub clean_dates
 {
+    my $self = shift;
     my $h = shift;
     my $date_re = qr/^\d\d\d\d\-\d\d\-\d\d\s*\d\d\:\d\d(\:\d\d)?$/i;
     foreach my $id ( keys %{ $h } ) {
@@ -352,37 +287,6 @@ sub clean_dates
             delete $h->{$id}{$_} if $h->{$id}{$_} &&
               $h->{$id}{$_} =~ /$date_re/;
         }
-    }
-}
-
-=head2 NOTES
-
-Function that returns debug notes.
-
-=head3 note_on_fail
-
-Returns a note about debug info that you can display if tests fail.
-
-=cut
-
-sub note_on_fail
-{
-    my $name = test_name();
-    my $tmpdir = RT::Test->temp_directory();
-    return <<END;
-Some tests in '$0' file failed.
-You can find debug info in '$tmpdir' dir.
-There should be:
-    $name.log - RT debug log file
-    $name.db - latest RT DB used while testing
-    $name.*.db - savepoint databases
-See also perldoc t/shredder/utils.pl for how to use this info.
-END
-}
-
-END {
-    if ( ! RT::Test->builder->is_passing ) {
-        diag( note_on_fail() );
     }
 }
 
