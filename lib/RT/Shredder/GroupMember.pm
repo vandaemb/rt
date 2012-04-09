@@ -134,6 +134,14 @@ sub __DependsOn
     return $self->SUPER::__DependsOn( %args );
 }
 
+sub __Wipeout
+{
+    my $self = shift;
+    my $msg = $self->_AsString ." wiped out";
+    $self->Delete;
+    $RT::Logger->info( $msg );
+    return;
+}
 
 #TODO: If we plan write export tool we also should fetch parent groups
 # now we only wipeout things.
