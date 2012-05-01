@@ -1,41 +1,41 @@
 #!/usr/bin/perl -w
 # BEGIN BPS TAGGED BLOCK {{{
-# 
+#
 # COPYRIGHT:
-#  
-# This software is Copyright (c) 1996-2004 Best Practical Solutions, LLC 
+#
+# This software is Copyright (c) 1996-2004 Best Practical Solutions, LLC
 #                                          <jesse.com>
-# 
+#
 # (Except where explicitly superseded by other copyright notices)
-# 
-# 
+#
+#
 # LICENSE:
-# 
+#
 # This work is made available to you under the terms of Version 2 of
 # the GNU General Public License. A copy of that license should have
 # been provided with this software, but in any event can be snarfed
 # from www.gnu.org.
-# 
+#
 # This work is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 # General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301 or visit their web page on the internet at
 # http://www.gnu.org/copyleft/gpl.html.
-# 
-# 
+#
+#
 # CONTRIBUTION SUBMISSION POLICY:
-# 
+#
 # (The following paragraph is not intended to limit the rights granted
 # to you to modify and distribute this software under the terms of
 # the GNU General Public License and is only of importance to you if
 # you choose to contribute your changes and enhancements to the
 # community by submitting them to Best Practical Solutions, LLC.)
-# 
+#
 # By intentionally submitting any modifications, corrections or
 # derivatives to this work, or any other work intended for use with
 # Request Tracker, to Best Practical Solutions, LLC, you confirm that
@@ -44,19 +44,25 @@
 # royalty-free, perpetual, license to use, copy, create derivative
 # works based on those contributions, and sublicense and distribute
 # those contributions and any derivatives thereof.
-# 
+#
 # END BPS TAGGED BLOCK }}}
 
 =head1 NAME
 
-rt-mailgate - Mail interface to RT3.
+outlook.t
+
+=head1 DESCRIPTION
+
+Tests for custom routines to work with email from Outlook.
 
 =cut
 
 use strict;
 use warnings;
 
-use RT::Test tests => 42;
+use RT::Test tests => 60;
+
+RT->Config->Set('CleanMailDoubleNewlines', 1);
 
 # 12.0 is outlook 2007, 14.0 is 2010
 for my $mailer ( 'Microsoft Office Outlook 12.0', 'Microsoft Outlook 14.0' ) {
@@ -199,7 +205,74 @@ EOF
         test_email( $text, $content,
             $mailer . ' with only text/plain, \n\n are not replaced' );
     }
+
+    diag "Test mail with with outlook, content type is base64";
+    {
+        my $text = <<EOF;
+From: root\@localhost
+X-Mailer: $mailer
+To: rt\@@{[RT->Config->Get('rtname')]}
+Subject: outlook basic test
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: base64
+
+VGhpcyBpcyB0aGUgYm9keSBvZiBhbiBlbWFpbC4KCkl0IGhhcyBtdWx0aXBs
+ZSBleHRyYSBuZXdsaW5lcy4KCgoKTGlrZSBhIG1hbmdsZWQgT3V0bG9vayBt
+ZXNzYWdlIG1pZ2h0LgoKCgpKb2huIFNtaXRoCgpTb21lIENvbXBhbnkKCmVt
+YWlsQHNvbWVjby5jb20KCg==
+EOF
+
+        my $content = <<EOF;
+This is the body of an email.
+It has multiple extra newlines.
+
+Like a mangled Outlook message might.
+
+John Smith
+Some Company
+email\@someco.com
+EOF
+        test_email( $text, $content,
+            $mailer . ' with base64, \n\n are replaced' );
+    }
 }
+
+# In a sample we received, the two X-MS- headers included
+# below were both present and had no values. For now, using
+# the existence of these headers as evidence of MS Outlook
+# or Exchange.
+
+diag "Test mail with with outlook, no X-Mailer, content type is base64";
+{
+        my $text = <<EOF;
+From: root\@localhost
+To: rt\@@{[RT->Config->Get('rtname')]}
+Subject: outlook basic test
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: base64
+X-MS-Has-Attach:
+X-MS-Tnef-Correlator:
+
+VGhpcyBpcyB0aGUgYm9keSBvZiBhbiBlbWFpbC4KCkl0IGhhcyBtdWx0aXBs
+ZSBleHRyYSBuZXdsaW5lcy4KCgoKTGlrZSBhIG1hbmdsZWQgT3V0bG9vayBt
+ZXNzYWdlIG1pZ2h0LgoKCgpKb2huIFNtaXRoCgpTb21lIENvbXBhbnkKCmVt
+YWlsQHNvbWVjby5jb20KCg==
+EOF
+
+        my $content = <<EOF;
+This is the body of an email.
+It has multiple extra newlines.
+
+Like a mangled Outlook message might.
+
+John Smith
+Some Company
+email\@someco.com
+EOF
+	test_email( $text, $content,
+		    ' with base64, no X-Mailer, \n\n are replaced' );
+}
+
 
 diag "Test mail with with multipart/alternative but x-mailer is not outlook ";
 {
