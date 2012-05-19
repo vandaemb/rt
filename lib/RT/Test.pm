@@ -735,7 +735,7 @@ sub create_ticket {
 
     if ($args{Queue} && $args{Queue} =~ /\D/) {
         my $queue = RT::Queue->new(RT->SystemUser);
-        if (my $id = $queue->Load($args{Queue}) ) {
+        if (my $id = ref $args{Queue} ? $args{Queue}->id : $queue->Load($args{Queue}) ) {
             $args{Queue} = $id;
         } else {
             die ("Error: Invalid queue $args{Queue}");
