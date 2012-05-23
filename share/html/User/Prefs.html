@@ -238,10 +238,8 @@ else {
 
     push @results, ProcessObjectCustomFieldUpdates( ARGSRef => \%ARGS, Object => $UserObj );
 
-    if ( $Lang ) {
-        $session{'CurrentUser'}->LanguageHandle($Lang);
-        $session{'CurrentUser'} = $session{'CurrentUser'}; # force writeback
-    }
+    $session{'CurrentUser'}->LanguageHandle($Lang);
+    $session{'CurrentUser'} = $session{'CurrentUser'}; # force writeback
 
     # Deal with special fields: Privileged, Enabled, and Password
     if  ( $SetPrivileged and $Privileged != $UserObj->Privileged ) {
