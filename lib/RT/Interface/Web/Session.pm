@@ -86,6 +86,25 @@ sub Class {
              || 'Apache::Session::File';
     eval "require $class";
     die $@ if $@;
+
+    if ( $class eq 'Apache::Session::Postgres' ) {
+        require Apache::Session::Store::Postgres;
+        *Apache::Session::Store::Postgres::update = sub {
+            Apache::Session::Store::DBI::update(@_);
+            my $self    = shift;
+            my $session = shift;
+            local $self->{dbh}->{RaiseError} = 1;
+            if ( !defined $self->{update_last_updated} ) {
+                $self->{update_sth} = $self->{dbh}->prepare_cached(
+                    qq{
+                UPDATE $self->{'table_name'} SET LastUpdated = NOW() WHERE id = ?}
+                );
+            }
+
+            $self->{update_sth}->bind_param( 1, $session->{data}->{_session_id} );
+            $self->{update_sth}->execute;
+        };
+    }
     return $class;
 }
 
