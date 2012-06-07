@@ -54,7 +54,9 @@
   <head>
     <title><%$Title%></title>
 
+% if ($JavaScript) {
     <& /Elements/Framekiller &>
+% }
 
 % if ($Refresh && $Refresh =~ /^(\d+)/ && $1 > 0) {
 %   my $URL = $m->notes->{RefreshURL}; $URL = $URL ? ";URL=$URL" : "";
