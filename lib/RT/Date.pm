@@ -203,21 +203,13 @@ sub Set {
     }
     elsif ( $args{'Format'} =~ /^unknown$/i ) {
         require Time::ParseDate;
-        # the module supports only legacy timezones like PDT or EST...
-        # so we parse date as GMT and later apply offset, this only
-        # should be applied to absolute times, so compensate shift in NOW
-        my $now = time;
-        $now += ($self->Localtime( $args{Timezone}, $now ))[9];
         my $date = Time::ParseDate::parsedate(
             $args{'Value'},
-            GMT           => 1,
-            NOW           => $now,
+            GMT           => $self->Timezone($args{'Timezone'}),
             UK            => RT->Config->Get('DateDayBeforeMonth'),
             PREFER_PAST   => RT->Config->Get('AmbiguousDayInPast'),
             PREFER_FUTURE => RT->Config->Get('AmbiguousDayInFuture'),
         );
-        # apply timezone offset
-        $date -= ($self->Localtime( $args{Timezone}, $date ))[9];
 
         $RT::Logger->debug(
             "RT::Date used Time::ParseDate to make '$args{'Value'}' $date\n"
