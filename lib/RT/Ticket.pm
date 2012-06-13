@@ -3509,7 +3509,7 @@ sub _UpdateTimeTaken {
     my %rest    = @_;
 
     if ( my $txn = $rest{'Transaction'} ) {
-        return if $txn->Type eq 'Set' && $txn->Field eq 'TimeWorked';
+        return if $txn->__Value('Type') eq 'Set' && $txn->__Value('Field') eq 'TimeWorked';
     }
 
     my $Total = $self->__Value("TimeWorked");
