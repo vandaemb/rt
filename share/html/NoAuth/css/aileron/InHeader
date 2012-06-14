@@ -51,6 +51,7 @@
 <!--[if lt IE 7]>
 <link rel="stylesheet" href="<%RT->Config->Get('WebPath')%>/NoAuth/css/aileron/msie6.css" type="text/css" media="all" />
 <![endif]-->
+% if ($JavaScript) {
 <script type="text/javascript">
 jQuery(document).ready(function(){
     jQuery.fn.supersubs.defaults = {
@@ -62,3 +63,7 @@ jQuery(document).ready(function(){
     jQuery("#page-menu.toplevel").addClass('sf-menu sf-js-enabled').supersubs().superfish({ dropShadows: false, speed: 'fast' }).supposition();
 });
 </script>
+% }
+<%args>
+$JavaScript => 1
+</%args>

@@ -83,7 +83,7 @@
 
 % my $stylesheet_plugin = "/NoAuth/css/".$style."/InHeader";
 % if ($m->comp_exists($stylesheet_plugin) ) {
-<& $stylesheet_plugin &>
+<& $stylesheet_plugin, JavaScript => $JavaScript &>
 % }
 
 <!-- Site CSS from theme editor -->
