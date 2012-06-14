@@ -659,7 +659,7 @@ sub edit {
 EDIT:
     # We'll let the user edit the form before sending it to the server,
     # unless we have enough information to submit it non-interactively.
-    if ( $type eq 'ticket' && $text !~ /^Content-Type:/m ) {
+    if ( $type && $type eq 'ticket' && $text !~ /^Content-Type:/m ) {
         $content_type ||= 'text/plain';
         $text .= "Content-Type: $content_type\n";
     }
