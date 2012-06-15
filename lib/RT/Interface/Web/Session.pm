@@ -94,15 +94,15 @@ sub Class {
             my $self    = shift;
             my $session = shift;
             local $self->{dbh}->{RaiseError} = 1;
-            if ( !defined $self->{update_sth} ) {
-                $self->{update_sth} = $self->{dbh}->prepare_cached(
+            if ( !defined $self->{update_last_updated} ) {
+                $self->{update_last_updated} = $self->{dbh}->prepare_cached(
                     qq{
                 UPDATE $self->{'table_name'} SET LastUpdated = NOW() WHERE id = ?}
                 );
             }
 
-            $self->{update_sth}->bind_param( 1, $session->{data}->{_session_id} );
-            $self->{update_sth}->execute;
+            $self->{update_last_updated}->bind_param( 1, $session->{data}->{_session_id} );
+            $self->{update_last_updated}->execute;
         };
     }
     return $class;
