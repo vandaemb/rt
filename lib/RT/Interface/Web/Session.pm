@@ -94,7 +94,7 @@ sub Class {
             my $self    = shift;
             my $session = shift;
             local $self->{dbh}->{RaiseError} = 1;
-            if ( !defined $self->{update_last_updated} ) {
+            if ( !defined $self->{update_sth} ) {
                 $self->{update_sth} = $self->{dbh}->prepare_cached(
                     qq{
                 UPDATE $self->{'table_name'} SET LastUpdated = NOW() WHERE id = ?}
