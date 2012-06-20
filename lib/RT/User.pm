@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -716,9 +716,9 @@ sub SetRandomPassword {
 
 Returns status, [ERROR or new password].  Resets this user's password to
 a randomly generated pronouncable password and emails them, using a
-global template called "RT_PasswordChange", which can be overridden
-with global templates "RT_PasswordChange_Privileged" or "RT_PasswordChange_NonPrivileged"
-for privileged and Non-privileged users respectively.
+global template called "PasswordChange".
+
+This function is currently unused in the UI, but available for local scripts.
 
 =cut
 
@@ -932,7 +932,7 @@ sub IsPassword {
         # crypt() output
         return 0 unless crypt(encode_utf8($value), $stored) eq $stored;
     } else {
-        $RT::Logger->warn("Unknown password form");
+        $RT::Logger->warning("Unknown password form");
         return 0;
     }
 
@@ -1206,6 +1206,37 @@ sub HasRight {
     return $self->PrincipalObj->HasRight(@_);
 }
 
+=head2 CurrentUserCanSee [FIELD]
+
+Returns true if the current user can see the user, based on if it is
+public, ourself, or we have AdminUsers
+
+=cut
+
+sub CurrentUserCanSee {
+    my $self = shift;
+    my ($what) = @_;
+
+    # If it's public, fine.  Note that $what may be "transaction", which
+    # doesn't have an Accessible value, and thus falls through below.
+    if ( $self->_Accessible( $what, 'public' ) ) {
+        return 1;
+    }
+
+    # Users can see their own properties
+    elsif ( defined($self->Id) && $self->CurrentUser->Id == $self->Id ) {
+        return 1;
+    }
+
+    # If the user has the admin users right, that's also enough
+    elsif ( $self->CurrentUser->HasRight( Right => 'AdminUsers', Object => $RT::System) ) {
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
+
 =head2 CurrentUserCanModify RIGHT
 
 If the user has rights for this object, either because
@@ -1314,10 +1345,38 @@ sub SetPreferences {
     my $attr = RT::Attribute->new( $self->CurrentUser );
     $attr->LoadByNameAndObject( Object => $self, Name => $name );
     if ( $attr->Id ) {
-        return $attr->SetContent( $value );
+        my ($ok, $msg) = $attr->SetContent( $value );
+        return (1, "No updates made")
+            if $msg eq "That is already the current value";
+        return ($ok, $msg);
     } else {
         return $self->AddAttribute( Name => $name, Content => $value );
     }
+}
+
+=head2 Stylesheet
+
+Returns a list of valid stylesheets take from preferences.
+
+=cut
+
+sub Stylesheet {
+    my $self = shift;
+
+    my $style = RT->Config->Get('WebDefaultStylesheet', $self->CurrentUser);
+
+    if (RT::Interface::Web->ComponentPathIsSafe($style)) {
+        my @css_paths = map { $_ . '/NoAuth/css' } RT::Interface::Web->ComponentRoots;
+
+        for my $css_path (@css_paths) {
+            if (-d "$css_path/$style") {
+                return $style
+            }
+        }
+    }
+
+    # Fall back to the system stylesheet.
+    return RT->Config->Get('WebDefaultStylesheet');
 }
 
 =head2 WatchedQueues ROLE_LIST
@@ -1382,6 +1441,12 @@ sub WatchedQueues {
                             FIELD => 'MemberId',
                             VALUE => $self->PrincipalId,
                           );
+    $watched_queues->Limit(
+                            ALIAS => $queues_alias,
+                            FIELD => 'Disabled',
+                            VALUE => 0,
+                          );
+
 
     $RT::Logger->debug("WatchedQueues got " . $watched_queues->Count . " queues");
 
@@ -1420,7 +1485,9 @@ sub _Set {
     if ( $ret == 0 ) { return ( 0, $msg ); }
 
     if ( $args{'RecordTransaction'} == 1 ) {
-
+        if ($args{'Field'} eq "Password") {
+            $args{'Value'} = $Old = '********';
+        }
         my ( $Trans, $Msg, $TransObj ) = $self->_NewTransaction(
                                                Type => $args{'TransactionType'},
                                                Field     => $args{'Field'},
@@ -1446,25 +1513,9 @@ sub _Value {
     my $self  = shift;
     my $field = shift;
 
-    #if the field is public, return it.
-    if ( $self->_Accessible( $field, 'public' ) ) {
-        return ( $self->SUPER::_Value($field) );
-
-    }
-
-    #If the user wants to see their own values, let them
-    # TODO figure ouyt a better way to deal with this
-    elsif ( defined($self->Id) && $self->CurrentUser->Id == $self->Id ) {
-        return ( $self->SUPER::_Value($field) );
-    }
-
-    #If the user has the admin users right, return the field
-    elsif ( $self->CurrentUser->HasRight(Right =>'AdminUsers', Object => $RT::System) ) {
-        return ( $self->SUPER::_Value($field) );
-    } else {
-        return (undef);
-    }
-
+    # Defer to the abstraction above to know if the field can be read
+    return $self->SUPER::_Value($field) if $self->CurrentUserCanSee($field);
+    return undef;
 }
 
 =head2 FriendlyName

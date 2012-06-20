@@ -2,10 +2,9 @@ use strict;
 use warnings;
 
 use RT::Test tests => undef;
-use File::Temp 'tempfile';
 use File::Spec;
-my ( $att_fh, $att_file ) =
-  tempfile( 'rttestXXXXXX', SUFFIX => '.txt', UNLINK => 1, TMPDIR => 1 );
+my $att_file = File::Spec->catfile( RT::Test->temp_directory, 'attachment' );
+open my $att_fh, '>', $att_file or die $!;
 print $att_fh "this is an attachment";
 close $att_fh;
 my $att_name = ( File::Spec->splitpath($att_file) )[-1];
@@ -226,6 +225,41 @@ diag "Forward Transaction with attachments but no 'content' part" if $ENV{TEST_V
         like( $mail, qr/bpslogo\.png/,                     'att image file name' );
         like( $mail, qr/image\/png/,                       'att image content type' );
     }
+}
+RT::Test->clean_caught_mails;
+
+diag "Forward Ticket Template with a Subject: line" if $ENV{TEST_VERBOSE};
+{
+
+    require RT::Template;
+    my $template = RT::Template->new($RT::SystemUser);
+    $template->Load('Forward Ticket');
+
+    # prepend a Subject: line
+    $template->SetContent("Subject: OVERRIDING SUBJECT\n\n" . $template->Content);
+
+    my $ticket = RT::Test->create_ticket(
+        Subject => 'test ticket',
+        Queue   => 1,
+    );
+
+    $m->goto_ticket($ticket->Id);
+
+    $m->follow_link_ok(
+        { id => 'page-actions-forward' },
+        'follow 1st Forward to forward ticket'
+    );
+
+    $m->submit_form(
+        form_name => 'ForwardMessage',
+        fields    => {
+            To => 'rt-to@example.com',
+        },
+        button => 'ForwardAndReturn'
+    );
+
+    my ($mail) = RT::Test->fetch_caught_mails;
+    like($mail, qr/Subject: OVERRIDING SUBJECT/);
 }
 
 undef $m;

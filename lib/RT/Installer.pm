@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -252,7 +252,7 @@ sub CurrentValues {
 
 sub ConfigFile {
     require File::Spec;
-    return File::Spec->catfile( $RT::EtcPath, 'RT_SiteConfig.pm' );
+    return $ENV{RT_SITE_CONFIG} || File::Spec->catfile( $RT::EtcPath, 'RT_SiteConfig.pm' );
 }
 
 sub SaveConfig {

@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -79,6 +79,7 @@ use RT::Transaction;
 use MIME::Base64;
 use MIME::QuotedPrint;
 use MIME::Body;
+use RT::Util 'mime_recommended_filename';
 
 sub _OverlayAccessible {
   {
@@ -139,7 +140,9 @@ sub Create {
     $MessageId =~ s/^<(.*?)>$/$1/o;
 
     #Get the filename
-    my $Filename = $Attachment->head->recommended_filename;
+
+    my $Filename = mime_recommended_filename($Attachment);
+
     # remove path part. 
     $Filename =~ s!.*/!! if $Filename;
 

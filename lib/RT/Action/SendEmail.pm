@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -348,7 +348,7 @@ sub AddAttachments {
 
     $MIMEObj->head->delete('RT-Attach-Message');
 
-    my $attachments = RT::Attachments->new(RT->SystemUser);
+    my $attachments = RT::Attachments->new( RT->SystemUser );
     $attachments->Limit(
         FIELD => 'TransactionId',
         VALUE => $self->TransactionObj->Id
@@ -408,11 +408,20 @@ sub AddAttachment {
     my $attach  = shift;
     my $MIMEObj = shift || $self->TemplateObj->MIMEObj;
 
+    # $attach->TransactionObj may not always be $self->TransactionObj
+    return unless $attach->Id
+              and $attach->TransactionObj->CurrentUserCanSee;
+
+    # ->attach expects just the disposition type; extract it if we have the header
+    my $disp = ($attach->GetHeader('Content-Disposition') || '')
+                    =~ /^\s*(inline|attachment)/i ? $1 : undef;
+
     $MIMEObj->attach(
-        Type     => $attach->ContentType,
-        Charset  => $attach->OriginalEncoding,
-        Data     => $attach->OriginalContent,
-        Filename => $self->MIMEEncodeString( $attach->Filename ),
+        Type        => $attach->ContentType,
+        Charset     => $attach->OriginalEncoding,
+        Data        => $attach->OriginalContent,
+        Disposition => $disp, # a false value defaults to inline in MIME::Entity
+        Filename    => $self->MIMEEncodeString( $attach->Filename ),
         'RT-Attachment:' => $self->TicketObj->Id . "/"
             . $self->TransactionObj->Id . "/"
             . $attach->id,
@@ -466,8 +475,7 @@ sub AddTicket {
     my $self = shift;
     my $tid  = shift;
 
-    # XXX: we need a current user here, but who is current user?
-    my $attachs   = RT::Attachments->new(RT->SystemUser);
+    my $attachs   = RT::Attachments->new( $self->TransactionObj->CreatorObj );
     my $txn_alias = $attachs->TransactionAlias;
     $attachs->Limit( ALIAS => $txn_alias, FIELD => 'Type', VALUE => 'Create' );
     $attachs->Limit(
@@ -1009,15 +1017,16 @@ Set References and In-Reply-To headers for this message.
 
 sub SetReferencesHeaders {
     my $self = shift;
-    my ( @in_reply_to, @references, @msgid );
 
-    if ( my $top = $self->TransactionObj->Message->First ) {
-        @in_reply_to = split( /\s+/m, $top->GetHeader('In-Reply-To') || '' );
-        @references  = split( /\s+/m, $top->GetHeader('References')  || '' );
-        @msgid       = split( /\s+/m, $top->GetHeader('Message-ID')  || '' );
-    } else {
+    my $top = $self->TransactionObj->Message->First;
+    unless ( $top ) {
+        $self->SetHeader( References => $self->PseudoReference );
         return (undef);
     }
+
+    my @in_reply_to = split( /\s+/m, $top->GetHeader('In-Reply-To') || '' );
+    my @references  = split( /\s+/m, $top->GetHeader('References')  || '' );
+    my @msgid       = split( /\s+/m, $top->GetHeader('Message-ID')  || '' );
 
     # There are two main cases -- this transaction was created with
     # the RT Web UI, and hence we want to *not* append its Message-ID

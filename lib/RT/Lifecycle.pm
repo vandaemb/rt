@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -365,6 +365,28 @@ are merged.
 sub DefaultOnMerge {
     my $self = shift;
     return $self->DefaultStatus('on_merge');
+}
+
+=head3 ReminderStatusOnOpen
+
+Returns the status that should be used when reminders are opened.
+
+=cut
+
+sub ReminderStatusOnOpen {
+    my $self = shift;
+    return $self->DefaultStatus('reminder_on_open') || 'open';
+}
+
+=head3 ReminderStatusOnResolve
+
+Returns the status that should be used when reminders are resolved.
+
+=cut
+
+sub ReminderStatusOnResolve {
+    my $self = shift;
+    return $self->DefaultStatus('reminder_on_resolve') || 'resolved';
 }
 
 =head2 Transitions, rights, labels and actions.

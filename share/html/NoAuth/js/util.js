@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -294,8 +294,8 @@ function ReplaceAllTextareas(encoded) {
             textArea.parentNode.appendChild(typeField);
 
 
-            CKEDITOR.replace(textArea.name,{width:'100%',height:'<% RT->Config->Get('MessageBoxRichTextHeight') %>'});
-            CKEDITOR.basePath = "<%RT->Config->Get('WebPath')%>/NoAuth/RichText/";
+            CKEDITOR.replace(textArea.name,{width:'100%',height:<% RT->Config->Get('MessageBoxRichTextHeight') |n,j%>});
+            CKEDITOR.basePath = <%RT->Config->Get('WebPath')|n,j%>+"/NoAuth/RichText/";
 
             jQuery("#" + textArea.name + "___Frame").addClass("richtext-editor");
         }

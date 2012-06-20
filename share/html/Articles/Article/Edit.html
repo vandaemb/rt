@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -157,6 +157,7 @@ elsif ( $id eq 'new' ) {
             my $cfid = $1; 
         
             my $cf = RT::CustomField->new( $session{'CurrentUser'} );
+            $cf->SetContextObject( $ArticleObj );
             $cf->Load( $cfid );
             unless ( $cf->id ) {
                 $RT::Logger->error( "Couldn't load custom field #". $cfid );

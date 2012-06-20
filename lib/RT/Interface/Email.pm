@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -57,6 +57,7 @@ use RT::EmailParser;
 use File::Temp;
 use UNIVERSAL::require;
 use Mail::Mailer ();
+use Text::ParseWords qw/shellwords/;
 
 BEGIN {
     use base 'Exporter';
@@ -404,10 +405,12 @@ sub SendEmail {
 
     if ( $mail_command eq 'sendmailpipe' ) {
         my $path = RT->Config->Get('SendmailPath');
-        my $args = RT->Config->Get('SendmailArguments');
+        my @args = shellwords(RT->Config->Get('SendmailArguments'));
 
-        # SetOutgoingMailFrom
-        if ( RT->Config->Get('SetOutgoingMailFrom') ) {
+        # SetOutgoingMailFrom and bounces conflict, since they both want -f
+        if ( $args{'Bounce'} ) {
+            push @args, shellwords(RT->Config->Get('SendmailBounceArguments'));
+        } elsif ( RT->Config->Get('SetOutgoingMailFrom') ) {
             my $OutgoingMailAddress;
 
             if ($TicketObj) {
@@ -423,12 +426,9 @@ sub SendEmail {
 
             $OutgoingMailAddress ||= RT->Config->Get('OverrideOutgoingMailFrom')->{'Default'};
 
-            $args .= " -f $OutgoingMailAddress"
+            push @args, "-f", $OutgoingMailAddress
                 if $OutgoingMailAddress;
         }
-
-        # Set Bounce Arguments
-        $args .= ' '. RT->Config->Get('SendmailBounceArguments') if $args{'Bounce'};
 
         # VERP
         if ( $TransactionObj and
@@ -438,32 +438,36 @@ sub SendEmail {
             my $from = $TransactionObj->CreatorObj->EmailAddress;
             $from =~ s/@/=/g;
             $from =~ s/\s//g;
-            $args .= " -f $prefix$from\@$domain";
+            push @args, "-f", "$prefix$from\@$domain";
         }
 
         eval {
             # don't ignore CHLD signal to get proper exit code
             local $SIG{'CHLD'} = 'DEFAULT';
 
-            open( my $mail, '|-', "$path $args >/dev/null" )
-                or die "couldn't execute program: $!";
-
             # if something wrong with $mail->print we will get PIPE signal, handle it
             local $SIG{'PIPE'} = sub { die "program unexpectedly closed pipe" };
-            $args{'Entity'}->print($mail);
 
-            unless ( close $mail ) {
-                die "close pipe failed: $!" if $!; # system error
+            require IPC::Open2;
+            my ($mail, $stdout);
+            my $pid = IPC::Open2::open2( $stdout, $mail, $path, @args )
+                or die "couldn't execute program: $!";
+
+            $args{'Entity'}->print($mail);
+            close $mail or die "close pipe failed: $!";
+
+            waitpid($pid, 0);
+            if ($?) {
                 # sendmail exit statuses mostly errors with data not software
                 # TODO: status parsing: core dump, exit on signal or EX_*
-                my $msg = "$msgid: `$path $args` exitted with code ". ($?>>8);
+                my $msg = "$msgid: `$path @args` exited with code ". ($?>>8);
                 $msg = ", interrupted by signal ". ($?&127) if $?&127;
                 $RT::Logger->error( $msg );
                 die $msg;
             }
         };
         if ( $@ ) {
-            $RT::Logger->crit( "$msgid: Could not send mail with command `$path $args`: " . $@ );
+            $RT::Logger->crit( "$msgid: Could not send mail with command `$path @args`: " . $@ );
             if ( $TicketObj ) {
                 _RecordSendEmailFailure( $TicketObj );
             }
@@ -744,16 +748,19 @@ sub SendForward {
     $mail->add_part( $entity );
 
     my $from;
-    my $subject = '';
-    $subject = $txn->Subject if $txn;
-    $subject ||= $ticket->Subject if $ticket;
+    unless (defined $mail->head->get('Subject')) {
+        my $subject = '';
+        $subject = $txn->Subject if $txn;
+        $subject ||= $ticket->Subject if $ticket;
 
-    unless ( RT->Config->Get('ForwardFromUser') ) {
-        # XXX: what if want to forward txn of other object than ticket?
-        $subject = AddSubjectTag( $subject, $ticket );
+        unless ( RT->Config->Get('ForwardFromUser') ) {
+            # XXX: what if want to forward txn of other object than ticket?
+            $subject = AddSubjectTag( $subject, $ticket );
+        }
+
+        $mail->head->set( Subject => EncodeToMIME( String => "Fwd: $subject" ) );
     }
 
-    $mail->head->set( Subject => EncodeToMIME( String => "Fwd: $subject" ) );
     $mail->head->set(
         From => EncodeToMIME(
             String => GetForwardFrom( Transaction => $txn, Ticket => $ticket )
@@ -1199,8 +1206,8 @@ sub SetInReplyTo {
         if @references > 10;
 
     my $mail = $args{'Message'};
-    $mail->head->set( 'In-Reply-To' => join ' ', @rtid? (@rtid) : (@id) ) if @id || @rtid;
-    $mail->head->set( 'References' => join ' ', @references );
+    $mail->head->set( 'In-Reply-To' => Encode::encode_utf8(join ' ', @rtid? (@rtid) : (@id)) ) if @id || @rtid;
+    $mail->head->set( 'References' => Encode::encode_utf8(join ' ', @references) );
 }
 
 sub ParseTicketId {
@@ -1682,17 +1689,20 @@ sub _RunUnsafeAction {
             return ( 0, "Ticket not taken" );
         }
     } elsif ( $args{'Action'} =~ /^resolve$/i ) {
-        my ( $status, $msg ) = $args{'Ticket'}->SetStatus('resolved');
-        unless ($status) {
+        my $new_status = $args{'Ticket'}->FirstInactiveStatus;
+        if ($new_status) {
+            my ( $status, $msg ) = $args{'Ticket'}->SetStatus($new_status);
+            unless ($status) {
 
-            #Warn the sender that we couldn't actually submit the comment.
-            MailError(
-                To          => $args{'ErrorsTo'},
-                Subject     => "Ticket not resolved",
-                Explanation => $msg,
-                MIMEObj     => $args{'Message'}
-            );
-            return ( 0, "Ticket not resolved" );
+                #Warn the sender that we couldn't actually submit the comment.
+                MailError(
+                    To          => $args{'ErrorsTo'},
+                    Subject     => "Ticket not resolved",
+                    Explanation => $msg,
+                    MIMEObj     => $args{'Message'}
+                );
+                return ( 0, "Ticket not resolved" );
+            }
         }
     } else {
         return ( 0, "Not supported unsafe action $args{'Action'}", $args{'Ticket'} );

@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -613,20 +613,27 @@ sub Create {
         foreach my $link (
             ref( $args{$type} ) ? @{ $args{$type} } : ( $args{$type} ) )
         {
+            my ( $val, $msg, $obj ) = $self->__GetTicketFromURI( URI => $link );
+            unless ($val) {
+                push @non_fatal_errors, $msg;
+                next;
+            }
+
             # Check rights on the other end of the link if we must
             # then run _AddLink that doesn't check for ACLs
             if ( RT->Config->Get( 'StrictLinkACL' ) ) {
-                my ($val, $msg, $obj) = $self->__GetTicketFromURI( URI => $link );
-                unless ( $val ) {
-                    push @non_fatal_errors, $msg;
-                    next;
-                }
                 if ( $obj && !$obj->CurrentUserHasRight('ModifyTicket') ) {
                     push @non_fatal_errors, $self->loc('Linking. Permission denied');
                     next;
                 }
             }
-            
+
+            if ( $obj && $obj->Status eq 'deleted' ) {
+                push @non_fatal_errors,
+                  $self->loc("Linking. Can't link to a deleted ticket");
+                next;
+            }
+
             my ( $wval, $wmsg ) = $self->_AddLink(
                 Type                          => $LINKTYPEMAP{$type}->{'Type'},
                 $LINKTYPEMAP{$type}->{'Mode'} => $link,
@@ -1232,7 +1239,7 @@ sub DeleteWatcher {
             }
         }
         else {
-            $RT::Logger->warn("$self -> DeleteWatcher got passed a bogus type");
+            $RT::Logger->warning("$self -> DeleteWatcher got passed a bogus type");
             return ( 0,
                      $self->loc('Error in parameters to Ticket->DeleteWatcher') );
         }
@@ -1903,6 +1910,31 @@ sub FirstActiveStatus {
     return $next;
 }
 
+=head2 FirstInactiveStatus
+
+Returns the first inactive status that the ticket could transition to,
+according to its current Queue's lifecycle.  May return undef if there
+is no such possible status to transition to, or we are already in it.
+This is used in resolve action in UnsafeEmailCommands, for instance.
+
+=cut
+
+sub FirstInactiveStatus {
+    my $self = shift;
+
+    my $lifecycle = $self->QueueObj->Lifecycle;
+    my $status = $self->Status;
+    my @inactive = $lifecycle->Inactive;
+    # no change if no inactive statuses in the lifecycle
+    return undef unless @inactive;
+
+    # no change if the ticket is already has first status from the list of inactive
+    return undef if lc $status eq lc $inactive[0];
+
+    my ($next) = grep $lifecycle->IsInactive($_), $lifecycle->Transitions($status);
+    return $next;
+}
+
 =head2 SetStarted
 
 Takes a date in ISO format or undef
@@ -2228,7 +2260,9 @@ sub _RecordNote {
     my $msgid = $args{'MIMEObj'}->head->get('Message-ID');
     unless (defined $msgid && $msgid =~ /<(rt-.*?-\d+-\d+)\.(\d+-0-0)\@\Q$org\E>/) {
         $args{'MIMEObj'}->head->set(
-            'RT-Message-ID' => RT::Interface::Email::GenMessageId( Ticket => $self )
+            'RT-Message-ID' => Encode::encode_utf8(
+                RT::Interface::Email::GenMessageId( Ticket => $self )
+            )
         );
     }
 
@@ -2350,7 +2384,7 @@ sub _Links {
     my $links = $self->{ $cache_key }
               = RT::Links->new( $self->CurrentUser );
     unless ( $self->CurrentUserHasRight('ShowTicket') ) {
-        $links->Limit( FIELD => 'id', VALUE => 0 );
+        $links->Limit( FIELD => 'id', VALUE => 0, SUBCLAUSE => 'acl' );
         return $links;
     }
 
@@ -2518,6 +2552,9 @@ sub AddLink {
     {
         return ( 0, $self->loc("Permission Denied") );
     }
+
+    return ( 0, "Can't link to a deleted ticket" )
+      if $other_ticket && $other_ticket->Status eq 'deleted';
 
     return $self->_AddLink(%args);
 }
@@ -3503,6 +3540,16 @@ sub CurrentUserHasRight {
 }
 
 
+=head2 CurrentUserCanSee
+
+Returns true if the current user can see the ticket, using ShowTicket
+
+=cut
+
+sub CurrentUserCanSee {
+    my $self = shift;
+    return $self->CurrentUserHasRight('ShowTicket');
+}
 
 =head2 HasRight
 
@@ -3615,7 +3662,9 @@ sub Transactions {
 
 sub TransactionCustomFields {
     my $self = shift;
-    return $self->QueueObj->TicketTransactionCustomFields;
+    my $cfs = $self->QueueObj->TicketTransactionCustomFields;
+    $cfs->SetContextObject( $self );
+    return $cfs;
 }
 
 

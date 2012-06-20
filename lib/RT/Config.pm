@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -198,6 +198,22 @@ our %META = (
             # XXX: we need support for 'get values callback'
             Values => [qw(web2 aileron ballard)],
         },
+        PostLoadCheck => sub {
+            my $self = shift;
+            my $value = $self->Get('WebDefaultStylesheet');
+
+            my @comp_roots = RT::Interface::Web->ComponentRoots;
+            for my $comp_root (@comp_roots) {
+                return if -d $comp_root.'/NoAuth/css/'.$value;
+            }
+
+            $RT::Logger->warning(
+                "The default stylesheet ($value) does not exist in this instance of RT. "
+              . "Defaulting to aileron."
+            );
+
+            $self->Set('WebDefaultStylesheet', 'aileron');
+        },
     },
     UseSideBySideLayout => {
         Section => 'Ticket composition',
@@ -384,8 +400,8 @@ our %META = (
             Description => q|What tickets to display in the 'More about requestor' box|,                #loc
             Values      => [qw(Active Inactive All None)],
             ValuesLabel => {
-                Active   => "Show the Requestor's 10 highest priority open tickets",                  #loc
-                Inactive => "Show the Requestor's 10 highest priority closed tickets",      #loc
+                Active   => "Show the Requestor's 10 highest priority active tickets",                  #loc
+                Inactive => "Show the Requestor's 10 highest priority inactive tickets",      #loc
                 All      => "Show the Requestor's 10 highest priority tickets",      #loc
                 None     => "Show no tickets for the Requestor", #loc
             },
@@ -594,6 +610,7 @@ our %META = (
             }
         }
     },
+    ReferrerWhitelist => { Type => 'ARRAY' },
     ResolveDefaultUpdateType => {
         PostLoadCheck => sub {
             my $self  = shift;

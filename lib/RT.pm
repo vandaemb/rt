@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -130,8 +130,9 @@ sub LoadConfig {
 
 =head2 Init
 
-L<Connect to the database /ConnectToDatabase>, L<initilizes system objects /InitSystemObjects>,
-L<preloads classes /InitClasses> and L<set up logging /InitLogging>.
+L<Connects to the database|/ConnectToDatabase>, L<initilizes system
+objects|/InitSystemObjects>, L<preloads classes|/InitClasses>, L<sets
+up logging|/InitLogging>, and L<loads plugins|/InitPlugins>.
 
 =cut
 
@@ -154,7 +155,7 @@ sub Init {
 
 =head2 ConnectToDatabase
 
-Get a database connection. See also </Handle>.
+Get a database connection. See also L</Handle>.
 
 =cut
 
@@ -413,6 +414,8 @@ sub InitClasses {
     require RT::Dashboard;
     require RT::Approval;
     require RT::Lifecycle;
+    require RT::Link;
+    require RT::Links;
     require RT::Article;
     require RT::Articles;
     require RT::Class;
@@ -428,6 +431,9 @@ sub InitClasses {
     # in the session, as we deserialize it so we never call constructor
     # of the class, so the list of accessible fields is empty and we die
     # with "Method xxx is not implemented in RT::SomeClass"
+
+    # without this, we also can never call _ClassAccessible, because we
+    # won't have filled RT::Record::_TABLE_ATTR
     $_->_BuildTableAttributes foreach qw(
         RT::Ticket
         RT::Transaction
@@ -446,6 +452,13 @@ sub InitClasses {
         RT::ObjectCustomField
         RT::ObjectCustomFieldValue
         RT::Attribute
+        RT::ACE
+        RT::Link
+        RT::Article
+        RT::Class
+        RT::ObjectClass
+        RT::ObjectTopic
+        RT::Topic
     );
 
     if ( $args{'Heavy'} ) {
@@ -472,8 +485,8 @@ sub InitClasses {
 
 =head2 InitSystemObjects
 
-Initializes system objects: C<$RT::System>, C<RT->SystemUser>
-and C<RT->Nobody>.
+Initializes system objects: C<$RT::System>, C<< RT->SystemUser >>
+and C<< RT->Nobody >>.
 
 =cut
 
@@ -496,8 +509,8 @@ sub InitSystemObjects {
 
 =head2 Config
 
-Returns the current L<config object RT::Config>, but note that
-you must L<load config /LoadConfig> first otherwise this method
+Returns the current L<config object|RT::Config>, but note that
+you must L<load config|/LoadConfig> first otherwise this method
 returns undef.
 
 Method can be called as class method.
@@ -508,7 +521,7 @@ sub Config { return $Config || shift->LoadConfig(); }
 
 =head2 DatabaseHandle
 
-Returns the current L<database handle object RT::Handle>.
+Returns the current L<database handle object|RT::Handle>.
 
 See also L</ConnectToDatabase>.
 
@@ -526,7 +539,7 @@ sub Logger { return $Logger }
 
 =head2 System
 
-Returns the current L<system object RT::System>. See also
+Returns the current L<system object|RT::System>. See also
 L</InitSystemObjects>.
 
 =cut
@@ -589,10 +602,12 @@ sub Plugins {
 
 =head2 PluginDirs
 
-Takes optional subdir (e.g. po, lib, etc.) and return plugins' dirs that exist.
+Takes an optional subdir (e.g. po, lib, etc.) and returns a list of
+directories from plugins where that subdirectory exists.
 
-This code chacke plugins names or anything else and required when main config
-is loaded to load plugins' configs.
+This code does not check plugin names, plugin validitity, or load
+plugins (see L</InitPlugins>) in any way, and requires that RT's
+configuration have been already loaded.
 
 =cut
 
@@ -643,7 +658,8 @@ sub InitPluginPaths {
 
 =head2 InitPlugins
 
-Initialze all Plugins found in the RT configuration file, setting up their lib and HTML::Mason component roots.
+Initialize all Plugins found in the RT configuration file, setting up
+their lib and L<HTML::Mason> component roots.
 
 =cut
 
@@ -663,11 +679,21 @@ sub InitPlugins {
 sub InstallMode {
     my $self = shift;
     if (@_) {
-         $_INSTALL_MODE = shift;
-         if($_INSTALL_MODE) {
-             require RT::CurrentUser;
-            $SystemUser = RT::CurrentUser->new();
-         }
+        my ($integrity, $state, $msg) = RT::Handle->CheckIntegrity;
+        if ($_[0] and $integrity) {
+            # Trying to turn install mode on but we have a good DB!
+            require Carp;
+            $RT::Logger->error(
+                Carp::longmess("Something tried to turn on InstallMode but we have DB integrity!")
+            );
+        }
+        else {
+            $_INSTALL_MODE = shift;
+            if($_INSTALL_MODE) {
+                require RT::CurrentUser;
+               $SystemUser = RT::CurrentUser->new();
+            }
+        }
     }
     return $_INSTALL_MODE;
 }
@@ -720,7 +746,7 @@ sub CanonicalizeGeneratedPaths {
 =head2 AddJavaScript
 
 helper method to add js files to C<JSFiles> config.
-to add extra css files, you can add the following line
+to add extra js files, you can add the following line
 in the plugin's main file:
 
     RT->AddJavaScript( 'foo.js', 'bar.js' ); 
@@ -784,7 +810,6 @@ If you're not sure what's going on, report them rt-devel@lists.bestpractical.com
 
 L<RT::StyleGuide>
 L<DBIx::SearchBuilder>
-
 
 =cut
 

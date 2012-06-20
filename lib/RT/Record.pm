@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -264,6 +264,18 @@ an error.
 
 If this object's table has any of the following atetributes defined as
 'Auto', this routine will automatically fill in their values.
+
+=over
+
+=item Created
+
+=item Creator
+
+=item LastUpdated
+
+=item LastUpdatedBy
+
+=back
 
 =cut
 
@@ -591,10 +603,10 @@ Validate the name of the record we're creating. Mostly, just make sure it's not 
 sub ValidateName {
     my $self = shift;
     my $value = shift;
-    if ($value && $value=~ /^\d+$/) {
+    if (defined $value && $value=~ /^\d+$/) {
         return(0);
     } else  {
-         return (1);
+        return(1);
     }
 }
 
@@ -664,8 +676,8 @@ sub _BuildTableAttributes {
 
     }
 
-    foreach my $column (%$attributes) {
-        foreach my $attr ( %{ $attributes->{$column} } ) {
+    foreach my $column (keys %$attributes) {
+        foreach my $attr ( keys %{ $attributes->{$column} } ) {
             $_TABLE_ATTR->{$class}->{$column}->{$attr} = $attributes->{$column}->{$attr};
         }
     }
@@ -673,8 +685,8 @@ sub _BuildTableAttributes {
         next unless UNIVERSAL::can( $self, $method );
         $attributes = $self->$method();
 
-        foreach my $column (%$attributes) {
-            foreach my $attr ( %{ $attributes->{$column} } ) {
+        foreach my $column ( keys %$attributes ) {
+            foreach my $attr ( keys %{ $attributes->{$column} } ) {
                 $_TABLE_ATTR->{$class}->{$column}->{$attr} = $attributes->{$column}->{$attr};
             }
         }
@@ -1593,7 +1605,7 @@ sub _AddCustomFieldValue {
             0,
             $self->loc(
                 "Custom field [_1] does not apply to this object",
-                $args{'Field'}
+                ref $args{'Field'} ? $args{'Field'}->id : $args{'Field'}
             )
         );
     }

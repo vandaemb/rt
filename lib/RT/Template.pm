@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -96,10 +96,34 @@ sub _Accessible {
 
 sub _Set {
     my $self = shift;
+    my %args = (
+        Field => undef,
+        Value => undef,
+        @_,
+    );
     
     unless ( $self->CurrentUserHasQueueRight('ModifyTemplate') ) {
         return ( 0, $self->loc('Permission Denied') );
     }
+
+    if (exists $args{Value}) {
+        if ($args{Field} eq 'Queue') {
+            if ($args{Value}) {
+                # moving to another queue
+                my $queue = RT::Queue->new( $self->CurrentUser );
+                $queue->Load($args{Value});
+                unless ($queue->Id and $queue->CurrentUserHasRight('ModifyTemplate')) {
+                    return ( 0, $self->loc('Permission Denied') );
+                }
+            } else {
+                # moving to global
+                unless ($self->CurrentUser->HasRight( Object => RT->System, Right => 'ModifyTemplate' )) {
+                    return ( 0, $self->loc('Permission Denied') );
+                }
+            }
+        }
+    }
+
     return $self->SUPER::_Set( @_ );
 }
 

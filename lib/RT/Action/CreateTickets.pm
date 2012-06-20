@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -196,6 +196,9 @@ A complete list of acceptable fields for this beastie:
    +   Requestor       => Email address
    +   Cc              => Email address 
    +   AdminCc         => Email address 
+   +   RequestorGroup  => Group name
+   +   CcGroup         => Group name
+   +   AdminCcGroup    => Group name
        TimeWorked      => 
        TimeEstimated   => 
        TimeLeft        => 
@@ -230,7 +233,7 @@ by repeating the fieldname on a new line with an additional value.
 Fields marked with a ! are postponed to be processed after all
 tickets in the same actions are created.  Except for 'Status', those
 field can also take a ticket name within the same action (i.e.
-the identifiers after ==Create-Ticket), instead of raw Ticket ID
+the identifiers after ===Create-Ticket), instead of raw Ticket ID
 numbers.
 
 When parsed, field names are converted to lowercase and have -s stripped.
@@ -322,9 +325,19 @@ sub Prepare {
 
     }
 
+    my $active = 0;
+    if ( $self->TemplateObj->Type eq 'Perl' ) {
+        $active = 1;
+    } else {
+        RT->Logger->info(sprintf(
+            "Template #%d is type %s.  You most likely want to use a Perl template instead.",
+            $self->TemplateObj->id, $self->TemplateObj->Type
+        ));
+    }
+
     $self->Parse(
         Content        => $self->TemplateObj->Content,
-        _ActiveContent => 1
+        _ActiveContent => $active,
     );
     return 1;
 
@@ -554,7 +567,8 @@ sub Parse {
         $self->_ParseMultilineTemplate(%args);
     } elsif ( $args{'Content'} =~ /(?:\t|,)/i ) {
         $self->_ParseXSVTemplate(%args);
-
+    } else {
+        RT->Logger->error("Invalid Template Content (Couldn't find ===, and is not a csv/tsv template) - unable to parse: $args{Content}");
     }
 }
 
@@ -714,7 +728,11 @@ sub ParseLines {
                     $args{$tag} =~ s/^\s+//g;
                     $args{$tag} =~ s/\s+$//g;
                 }
-                if (($tag =~ /^(requestor|cc|admincc)$/i or grep {lc $_ eq $tag} keys %LINKTYPEMAP) and $args{$tag} =~ /,/) {
+                if (
+                    ($tag =~ /^(requestor|cc|admincc)(group)?$/i
+                        or grep {lc $_ eq $tag} keys %LINKTYPEMAP)
+                    and $args{$tag} =~ /,/
+                ) {
                     $args{$tag} = [ split /,\s*/, $args{$tag} ];
                 }
             }
@@ -735,6 +753,21 @@ sub ParseLines {
             }
         }
         $args{$date} = $dateobj->ISO;
+    }
+
+    foreach my $role (qw(requestor cc admincc)) {
+        next unless my $value = $args{ $role . 'group' };
+
+        my $group = RT::Group->new( $self->CurrentUser );
+        $group->LoadUserDefinedGroup( $value );
+        unless ( $group->id ) {
+            $RT::Logger->error("Couldn't load group '$value'");
+            next;
+        }
+
+        $args{ $role } = $args{ $role } ? [$args{ $role }] : []
+            unless ref $args{ $role };
+        push @{ $args{ $role } }, $group->PrincipalObj->id;
     }
 
     $args{'requestor'} ||= $self->TicketObj->Requestors->MemberEmailAddresses
@@ -1148,6 +1181,7 @@ sub UpdateCustomFields {
         my $cf = $1;
 
         my $CustomFieldObj = RT::CustomField->new($self->CurrentUser);
+        $CustomFieldObj->SetContextObject( $ticket );
         $CustomFieldObj->LoadById($cf);
 
         my @values;

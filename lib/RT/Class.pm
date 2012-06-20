@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -219,7 +219,7 @@ sub ValidateName {
     my $obj = RT::Class->new($RT::SystemUser);
     $obj->Load($newval);
     return undef if ( $obj->Id );
-    return 1;
+    return $self->SUPER::ValidateName($newval);
 
 }
 
@@ -275,6 +275,7 @@ sub ArticleCustomFields {
 
     my $cfs = RT::CustomFields->new( $self->CurrentUser );
     if ( $self->CurrentUserHasRight('SeeClass') ) {
+        $cfs->SetContextObject( $self );
         $cfs->LimitToGlobalOrObjectId( $self->Id );
         $cfs->LimitToLookupType( RT::Article->CustomFieldLookupType );
         $cfs->ApplySortOrder;
@@ -426,9 +427,7 @@ sub AddToObject {
 
 =head2 RemoveFromObject OBJECT
 
-Remove this custom field  for a single object, such as a queue or group.
-
-Takes an object
+Remove this class from a single queue object
 
 =cut
 
@@ -443,7 +442,7 @@ sub RemoveFromObject {
 
     my $ocf = $self->IsApplied( $id );
     unless ( $ocf ) {
-        return ( 0, $self->loc("This custom field does not apply to that object") );
+        return ( 0, $self->loc("This class does not apply to that object") );
     }
 
     # XXX: Delete doesn't return anything

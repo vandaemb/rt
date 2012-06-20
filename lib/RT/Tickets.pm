@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -337,6 +337,7 @@ sub _BookmarkLimit {
             VALUE    => $id,
             $first? (@rest): ( ENTRYAGGREGATOR => $ea )
         );
+        $first = 0 if $first;
     }
     $sb->_CloseParen;
 }
@@ -658,7 +659,6 @@ sub _TransDateLimit {
             FIELD         => 'Created',
             OPERATOR      => ">=",
             VALUE         => $daystart,
-            CASESENSITIVE => 0,
             @rest
         );
         $sb->_SQLLimit(
@@ -666,7 +666,6 @@ sub _TransDateLimit {
             FIELD         => 'Created',
             OPERATOR      => "<=",
             VALUE         => $dayend,
-            CASESENSITIVE => 0,
             @rest,
             ENTRYAGGREGATOR => 'AND',
         );
@@ -682,7 +681,6 @@ sub _TransDateLimit {
             FIELD         => 'Created',
             OPERATOR      => $op,
             VALUE         => $date->ISO,
-            CASESENSITIVE => 0,
             @rest
         );
     }
@@ -1100,6 +1098,12 @@ sub _GroupMembersJoin {
         FIELD2          => 'GroupId',
         ENTRYAGGREGATOR => 'AND',
     );
+    $self->SUPER::Limit(
+        $args{'Left'} ? (LEFTJOIN => $alias) : (),
+        ALIAS => $alias,
+        FIELD => 'Disabled',
+        VALUE => 0,
+    );
 
     $self->{'_sql_group_members_aliases'}{ $args{'GroupsAlias'} } = $alias
         unless $args{'New'};
@@ -1264,12 +1268,25 @@ sub _WatcherMembershipLimit {
         FIELD2 => 'id'
     );
 
+    $self->Limit(
+        ALIAS => $groupmembers,
+        FIELD => 'Disabled',
+        VALUE => 0,
+    );
+
     $self->Join(
         ALIAS1 => $memberships,
         FIELD1 => 'MemberId',
         ALIAS2 => $users,
         FIELD2 => 'id'
     );
+
+    $self->Limit(
+        ALIAS => $memberships,
+        FIELD => 'Disabled',
+        VALUE => 0,
+    );
+
 
     $self->_CloseParen;
 
@@ -1600,6 +1617,7 @@ sub _CustomFieldLimit {
                 FIELD      => $column,
                 OPERATOR   => $op,
                 VALUE      => $value,
+                CASESENSITIVE => 0,
                 %rest
             ) );
             $self->_CloseParen;
@@ -1607,11 +1625,8 @@ sub _CustomFieldLimit {
             $self->_CloseParen;
         }
         else {
-            my $cf = RT::CustomField->new( $self->CurrentUser );
-            $cf->Load($field);
-
             # need special treatment for Date
-            if ( $cf->Type eq 'DateTime' && $op eq '=' ) {
+            if ( $cf and $cf->Type eq 'DateTime' and $op eq '=' ) {
 
                 if ( $value =~ /:/ ) {
                     # there is time speccified.
@@ -1665,6 +1680,7 @@ sub _CustomFieldLimit {
                         FIELD    => 'Content',
                         OPERATOR => $op,
                         VALUE    => $value,
+                        CASESENSITIVE => 0,
                         %rest
                     );
                 }
@@ -1691,6 +1707,7 @@ sub _CustomFieldLimit {
                         OPERATOR        => $op,
                         VALUE           => $value,
                         ENTRYAGGREGATOR => 'AND',
+                        CASESENSITIVE => 0,
                     ) );
                 }
             }
@@ -1700,6 +1717,7 @@ sub _CustomFieldLimit {
                     FIELD    => 'Content',
                     OPERATOR => $op,
                     VALUE    => $value,
+                    CASESENSITIVE => 0,
                     %rest
                 );
 
@@ -1726,6 +1744,7 @@ sub _CustomFieldLimit {
                     OPERATOR        => $op,
                     VALUE           => $value,
                     ENTRYAGGREGATOR => 'AND',
+                    CASESENSITIVE => 0,
                 ) );
                 $self->_CloseParen;
             }
@@ -1782,6 +1801,7 @@ sub _CustomFieldLimit {
                 FIELD      => $column,
                 OPERATOR   => $op,
                 VALUE      => $value,
+                CASESENSITIVE => 0,
             ) );
         }
         else {
@@ -1791,6 +1811,7 @@ sub _CustomFieldLimit {
                 FIELD      => 'Content',
                 OPERATOR   => $op,
                 VALUE      => $value,
+                CASESENSITIVE => 0,
             );
         }
         $self->_SQLLimit(
@@ -3374,14 +3395,18 @@ sub _RestrictionsToClauses {
         exists $clause{$realfield} or $clause{$realfield} = [];
 
         # Escape Quotes
-        $field =~ s!(['"])!\\$1!g;
-        $value =~ s!(['"])!\\$1!g;
+        $field =~ s!(['\\])!\\$1!g;
+        $value =~ s!(['\\])!\\$1!g;
         my $data = [ $ea, $type, $field, $op, $value ];
 
         # here is where we store extra data, say if it's a keyword or
         # something.  (I.e. "TYPE SPECIFIC STUFF")
 
-        push @{ $clause{$realfield} }, $data;
+        if (lc $ea eq 'none') {
+            $clause{$realfield} = [ $data ];
+        } else {
+            push @{ $clause{$realfield} }, $data;
+        }
     }
     return \%clause;
 }

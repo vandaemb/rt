@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -388,22 +388,24 @@ sub Create {
         Repeated    => $args{'Repeated'},
     );
 
-    if ( exists $args{'LinkValueTo'}) {
-	$self->SetLinkValueTo($args{'LinkValueTo'});
+    if ($rv) {
+        if ( exists $args{'LinkValueTo'}) {
+            $self->SetLinkValueTo($args{'LinkValueTo'});
+        }
+
+        if ( exists $args{'IncludeContentForValue'}) {
+            $self->SetIncludeContentForValue($args{'IncludeContentForValue'});
+        }
+
+        return ($rv, $msg) unless exists $args{'Queue'};
+
+        # Compat code -- create a new ObjectCustomField mapping
+        my $OCF = RT::ObjectCustomField->new( $self->CurrentUser );
+        $OCF->Create(
+            CustomField => $self->Id,
+            ObjectId => $args{'Queue'},
+        );
     }
-
-    if ( exists $args{'IncludeContentForValue'}) {
-	$self->SetIncludeContentForValue($args{'IncludeContentForValue'});
-    }
-
-    return ($rv, $msg) unless exists $args{'Queue'};
-
-    # Compat code -- create a new ObjectCustomField mapping
-    my $OCF = RT::ObjectCustomField->new( $self->CurrentUser );
-    $OCF->Create(
-        CustomField => $self->Id,
-        ObjectId => $args{'Queue'},
-    );
 
     return ($rv, $msg);
 }
@@ -463,10 +465,12 @@ sub LoadByName {
     }
 
     # if we're looking for a queue by name, make it a number
-    if ( defined $args{'Queue'} && $args{'Queue'} =~ /\D/ ) {
+    if ( defined $args{'Queue'} && ($args{'Queue'} =~ /\D/ || !$self->ContextObject) ) {
         my $QueueObj = RT::Queue->new( $self->CurrentUser );
         $QueueObj->Load( $args{'Queue'} );
         $args{'Queue'} = $QueueObj->Id;
+        $self->SetContextObject( $QueueObj )
+            unless $self->ContextObject;
     }
 
     # XXX - really naive implementation.  Slow. - not really. still just one query
@@ -524,6 +528,8 @@ sub Values {
     # if the user has no rights, return an empty object
     if ( $self->id && $self->CurrentUserHasRight( 'SeeCustomField') ) {
         $cf_values->LimitToCustomField( $self->Id );
+    } else {
+        $cf_values->Limit( FIELD => 'id', VALUE => 0, SUBCLAUSE => 'acl' );
     }
     return ($cf_values);
 }
@@ -587,6 +593,20 @@ sub DeleteValue {
 }
 
 
+=head2 ValidateQueue Queue
+
+Make sure that the name specified is valid
+
+=cut
+
+sub ValidateName {
+    my $self = shift;
+    my $value = shift;
+
+    return 0 unless length $value;
+
+    return $self->SUPER::ValidateName($value);
+}
 
 =head2 ValidateQueue Queue
 
@@ -865,7 +885,77 @@ sub ContextObject {
     my $self = shift;
     return $self->{'context_object'};
 }
-  
+
+sub ValidContextType {
+    my $self = shift;
+    my $class = shift;
+
+    my %valid;
+    $valid{$_}++ for split '-', $self->LookupType;
+    delete $valid{'RT::Transaction'};
+
+    return $valid{$class};
+}
+
+=head2 LoadContextObject
+
+Takes an Id for a Context Object and loads the right kind of RT::Object
+for this particular Custom Field (based on the LookupType) and returns it.
+This is a good way to ensure you don't try to use a Queue as a Context
+Object on a User Custom Field.
+
+=cut
+
+sub LoadContextObject {
+    my $self = shift;
+    my $type = shift;
+    my $contextid = shift;
+
+    unless ( $self->ValidContextType($type) ) {
+        RT->Logger->debug("Invalid ContextType $type for Custom Field ".$self->Id);
+        return;
+    }
+
+    my $context_object = $type->new( $self->CurrentUser );
+    my ($id, $msg) = $context_object->LoadById( $contextid );
+    unless ( $id ) {
+        RT->Logger->debug("Invalid ContextObject id: $msg");
+        return;
+    }
+    return $context_object;
+}
+
+=head2 ValidateContextObject
+
+Ensure that a given ContextObject applies to this Custom Field.
+For custom fields that are assigned to Queues or to Classes, this checks that the Custom
+Field is actually applied to that objects.  For Global Custom Fields, it returns true
+as long as the Object is of the right type, because you may be using
+your permissions on a given Queue of Class to see a Global CF.
+For CFs that are only applied Globally, you don't need a ContextObject.
+
+=cut
+
+sub ValidateContextObject {
+    my $self = shift;
+    my $object = shift;
+
+    return 1 if $self->IsApplied(0);
+
+    # global only custom fields don't have objects
+    # that should be used as context objects.
+    return if $self->ApplyGlobally;
+
+    # Otherwise, make sure we weren't passed a user object that we're
+    # supposed to treat as a queue.
+    return unless $self->ValidContextType(ref $object);
+
+    # Check that it is applied correctly
+    my ($applied_to) = grep {ref($_) eq $self->RecordClassFromLookupType} ($object, $object->ACLEquivalenceObjects);
+    return unless $applied_to;
+    return $self->IsApplied($applied_to->id);
+}
+
 
 sub _Set {
     my $self = shift;
@@ -1677,6 +1767,7 @@ sub SetBasedOn {
         unless defined $value and length $value;
 
     my $cf = RT::CustomField->new( $self->CurrentUser );
+    $cf->SetContextObject( $self->ContextObject );
     $cf->Load( ref $value ? $value->id : $value );
 
     return (0, "Permission denied")
@@ -1694,6 +1785,7 @@ sub BasedOnObj {
     my $self = shift;
 
     my $obj = RT::CustomField->new( $self->CurrentUser );
+    $obj->SetContextObject( $self->ContextObject );
     if ( $self->BasedOn ) {
         $obj->Load( $self->BasedOn );
     }

@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -351,6 +351,8 @@ sub CastObjectsToRecords
     } elsif ( UNIVERSAL::isa( $targets, 'SCALAR' ) || !ref $targets ) {
         $targets = $$targets if ref $targets;
         my ($class, $id) = split /-/, $targets;
+        RT::Shredder::Exception->throw( "Unsupported class $class" )
+              unless $class =~ /^\w+(::\w+)*$/;
         $class = 'RT::'. $class unless $class =~ /^RTx?::/i;
         eval "require $class";
         die "Couldn't load '$class' module" if $@;

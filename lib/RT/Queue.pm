@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -404,8 +404,9 @@ sub Create {
         return ( 0, $self->loc("No permission to create queues") );
     }
 
-    unless ( $self->ValidateName( $args{'Name'} ) ) {
-        return ( 0, $self->loc('Queue already exists') );
+    {
+        my ($val, $msg) = $self->_ValidateName( $args{'Name'} );
+        return ($val, $msg) unless $val;
     }
 
     if ( $args{'Lifecycle'} && $args{'Lifecycle'} ne 'default' ) {
@@ -534,19 +535,33 @@ sub ValidateName {
     my $self = shift;
     my $name = shift;
 
+    my ($ok, $msg) = $self->_ValidateName($name);
+
+    return $ok ? 1 : 0;
+}
+
+sub _ValidateName {
+    my $self = shift;
+    my $name = shift;
+
+    return (undef, "Queue name is required") unless length $name;
+
+    # Validate via the superclass first
+    # Case: short circuit if it's an integer so we don't have
+    # fale negatives when loading a temp queue
+    unless ( my $q = $self->SUPER::ValidateName($name) ) {
+        return ($q, $self->loc("'[_1]' is not a valid name.", $name));
+    }
+
     my $tempqueue = RT::Queue->new(RT->SystemUser);
     $tempqueue->Load($name);
 
     #If this queue exists, return undef
     if ( $tempqueue->Name() && $tempqueue->id != $self->id)  {
-        return (undef);
+        return (undef, $self->loc("Queue already exists") );
     }
 
-    #If the queue doesn't exist, return 1
-    else {
-        return ($self->SUPER::ValidateName($name));
-    }
-
+    return (1);
 }
 
 
@@ -677,6 +692,7 @@ sub TicketTransactionCustomFields {
 
     my $cfs = RT::CustomFields->new( $self->CurrentUser );
     if ( $self->CurrentUserHasRight('SeeQueue') ) {
+        $cfs->SetContextObject( $self );
 	$cfs->LimitToGlobalOrObjectId( $self->Id );
 	$cfs->LimitToLookupType( 'RT::Queue-RT::Ticket-RT::Transaction' );
         $cfs->ApplySortOrder;
@@ -1234,6 +1250,17 @@ sub CurrentUserHasRight {
 
 }
 
+=head2 CurrentUserCanSee
+
+Returns true if the current user can see the queue, using SeeQueue
+
+=cut
+
+sub CurrentUserCanSee {
+    my $self = shift;
+
+    return $self->CurrentUserHasRight('SeeQueue');
+}
 
 
 =head2 HasRight

@@ -67,6 +67,19 @@ spontaneously logged in as other users in the system.
 
 =head3 mod_fcgid
 
+B<WARNING>: Before mod_fcgid 2.3.6, the maximum request size was 1GB.
+Starting in 2.3.6, this is now 128Kb.  This is unlikely to be large
+enough for any RT install that handles attachments.  You can read more
+about FcgidMaxRequestLen at
+L<http://httpd.apache.org/mod_fcgid/mod/mod_fcgid.html#fcgidmaxrequestlen>
+
+Most distributions will have a mod_fcgid.conf or similar file with
+mod_fcgid configurations and you should add:
+
+    FcgidMaxRequestLen 1073741824
+
+to return to the old default.
+
     <VirtualHost rt.example.com>
         ### Optional apache logs for RT
         # Ensure that your log rotation scripts know about these files
@@ -216,7 +229,7 @@ For example: if you're using the sample FastCGI config above, you might change
 the relevant directives to:
 
     Alias /rt/NoAuth/images/ /opt/rt4/share/html/NoAuth/images/
-    ScriptAlias /rt/ /opt/rt4/sbin/rt-server.fcgi/
+    ScriptAlias /rt /opt/rt4/sbin/rt-server.fcgi/
 
     # Set DocumentRoot as appropriate for the other content you want to serve
     DocumentRoot /var/www

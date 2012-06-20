@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -130,7 +130,7 @@ sub FromURI {
     # Special case: integers passed in as URIs must be ticket ids
     if ($uri =~ /^(\d+)$/) {
 	$scheme = "fsck.com-rt";
-    } elsif ($uri =~ /^((?:\w|\.|-)+?):/) {
+    } elsif ($uri =~ /^((?!javascript|data)(?:\w|\.|-)+?):/i) {
 	$scheme = $1;
     }
     else {

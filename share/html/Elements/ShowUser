@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -51,7 +51,7 @@
 # $Address is Email::Address object
 
 my $comp = '/Elements/ShowUser'. ucfirst lc $style;
-unless ( $m->comp_exists( $comp ) ) {
+unless ( RT::Interface::Web->ComponentPathIsSafe($comp) and $m->comp_exists( $comp ) ) {
     $RT::Logger->error(
         'Either system config or user #'
         . $session{'CurrentUser'}->id

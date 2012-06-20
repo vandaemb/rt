@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -161,7 +161,7 @@ sub IsSubscriptionReady {
 
     if ($sub_frequency eq 'weekly') {
         # correct day of week?
-        return 0 if $sub_frequency ne $dow;
+        return 0 if $sub_dow ne $dow;
 
         # does it match the "every N weeks" clause?
         $sub_fow = 1 if !$sub_fow;
@@ -252,7 +252,7 @@ SUMMARY
 
     $content = HTML::RewriteAttributes::Links->rewrite(
         $content,
-        RT->Config->Get('WebURL') . '/Dashboards/Render.html',
+        RT->Config->Get('WebURL') . 'Dashboards/Render.html',
     );
 
     $self->EmailDashboard(
@@ -318,9 +318,22 @@ sub EmailDashboard {
     my $currentuser  = $args{CurrentUser};
     my $email        = $args{Email};
 
+    my $frequency    = $subscription->SubValue('Frequency');
+
+    my %frequency_lookup = (
+        'm-f'     => 'Weekday', # loc
+        'daily'   => 'Daily',   # loc
+        'weekly'  => 'Weekly',  # loc
+        'monthly' => 'Monthly', # loc
+        'never'   => 'Never',   # loc
+    );
+
+    my $frequency_display = $frequency_lookup{$frequency}
+                         || $frequency;
+
     my $subject = sprintf '[%s] ' .  RT->Config->Get('DashboardSubject'),
         RT->Config->Get('rtname'),
-        ucfirst($subscription->SubValue('Frequency')),
+        $currentuser->loc($frequency_display),
         $dashboard->Name;
 
     my $entity = $self->BuildEmail(
@@ -434,6 +447,9 @@ sub BuildEmail {
                 autohandler_name => '', # disable forced login and more
                 data_dir => $data_dir,
             );
+            $mason->set_escape( h => \&RT::Interface::Web::EscapeUTF8 );
+            $mason->set_escape( u => \&RT::Interface::Web::EscapeURI  );
+            $mason->set_escape( j => \&RT::Interface::Web::EscapeJS   );
         }
         return $mason;
     }

@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -73,6 +73,3 @@ jQuery(document).ready(function(){
     jQuery("#prefs-menu").addClass("sf-menu sf-js-enabled").supersubs().superfish().supposition({ speed: 'fast' });
 });
 </script>
-<!--[if (lt IE 9)&(gt IE 6)]>
-<link rel="stylesheet" href="<%RT->Config->Get('WebPath')%>/NoAuth/css/web2/msie-pie.css" type="text/css" media="all" />
-<![endif]-->

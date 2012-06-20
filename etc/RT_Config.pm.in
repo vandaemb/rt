@@ -84,7 +84,7 @@ high port for this user.
 
 =cut
 
-Set($WebPort, 80);# + ($< * 7274) % 32766 + ($< && 1024));
+Set($WebPort, 80);
 
 =item C<$WebPath>
 
@@ -349,12 +349,7 @@ Set($StoreLoops, undef);
 C<$MaxAttachmentSize> sets the maximum size (in bytes) of attachments
 stored in the database.
 
-For MySQL and Oracle, we set this size to 10 megabytes.  If you're
-running a PostgreSQL version earlier than 7.1, you will need to drop
-this to 8192. (8k)
-
 =cut
-
 
 Set($MaxAttachmentSize, 10_000_000);
 
@@ -620,6 +615,9 @@ Set($NotifyActor, 0);
 By default, RT records each message it sends out to its own internal
 database.  To change this behavior, set C<$RecordOutgoingEmail> to 0
 
+If this is disabled, users' digest mail delivery preferences
+(i.e. EmailFrequency) will also be ignored.
+
 =cut
 
 Set($RecordOutgoingEmail, 1);
@@ -848,6 +846,10 @@ Set(@CustomFieldValuesSources, ());
 Set C<$CanonicalizeRedirectURLs> to 1 to use C<$WebURL> when
 redirecting rather than the one we get from C<%ENV>.
 
+Apache's UseCanonicalName directive changes the hostname that RT
+finds in C<%ENV>.  You can read more about what turning it On or Off
+means in the documentation for your version of Apache.
+
 If you use RT behind a reverse proxy, you almost certainly want to
 enable this option.
 
@@ -859,6 +861,8 @@ Set($CanonicalizeRedirectURLs, 0);
 
 A list of JavaScript files to be included in head.  Removing any of
 the default entries is not suggested.
+
+If you're a plugin author, refer to RT->AddJavaScript.
 
 =cut
 
@@ -881,12 +885,12 @@ Set(@JSFiles, qw/
 
 =item C<$JSMinPath>
 
-Path to the jsmin binary, available from
-http://www.crockford.com/javascript/jsmin.html
+Path to the jsmin binary; if specified, it will be used to minify
+C<JSFiles>.  The default, and the fallback if the binary cannot be
+found, is to simply concatenate the files.
 
-If specified, it will be used to minify C<JSFiles>.  If it cannot be
-found, RT will fall back to the L<JavaScript::Minifier> module;
-failing that, RT will will simply concatenate the files.
+jsmin can be installed by running 'make jsmin' from the RT install
+directory, or from http://www.crockford.com/javascript/jsmin.html
 
 =cut
 
@@ -895,6 +899,8 @@ failing that, RT will will simply concatenate the files.
 =item C<@CSSFiles>
 
 A list of additional CSS files to be included in head.
+
+If you're a plugin author, refer to RT->AddStyleSheets.
 
 =cut
 
@@ -1049,7 +1055,7 @@ RT stores dates using the UTC timezone in the DB, so charts grouped by
 dates and time are not representative. Set C<$ChartsTimezonesInDB> to 1
 to enable timezone conversions using your DB's capabilities. You may
 need to do some work on the DB side to use this feature, read more in
-F<docs/timezones_in_charts.pod>.
+F<docs/customizing/timezones_in_charts.pod>.
 
 At this time, this feature only applies to MySQL and PostgreSQL.
 
@@ -1251,6 +1257,9 @@ extra information about the user, this expects a Format string of user
 attributes.  Please note that not all the attributes are supported in
 this display because we're not building a table.
 
+Example:
+C<Set($MoreAboutRequestorExtraInfo,"Organization, Address1")>
+
 =cut
 
 Set($MoreAboutRequestorExtraInfo, "");
@@ -1304,6 +1313,16 @@ users have the OwnTicket right.
 =cut
 
 Set($AutocompleteOwners, 0);
+
+=item C<$AutocompleteOwnersForSearch>
+
+If set to 1, the owner drop-downs for the query builder are always
+replaced by text field that autocomplete and C<$AutocompleteOwners>
+is ignored. Helpful when owners list is huge in the query builder.
+
+=cut
+
+Set($AutocompleteOwnersForSearch, 0);
 
 =item C<$UserAutocompleteFields>
 
@@ -1367,6 +1386,19 @@ detailed breakdown by scrip.
 =cut
 
 Set($SimplifiedRecipients, 0);
+
+=item C<$HideResolveActionsWithDependencies>
+
+If set to 1, this option will skip ticket menu actions which can't be
+completed successfully because of outstanding active Depends On tickets.
+
+By default, all ticket actions are displayed in the menu even if some of
+them can't be successful until all Depends On links are resolved or
+transitioned to another inactive status.
+
+=cut
+
+Set($HideResolveActionsWithDependencies, 0);
 
 =back
 
@@ -1571,7 +1603,7 @@ Set($ShowTransactionImages, 1);
 Normally plaintext attachments are displayed as HTML with line breaks
 preserved.  This causes space- and tab-based formatting not to be
 displayed correctly.  By setting $PlainTextPre messages will be
-displayed using <pre>; this option overrides C<$PlainTextMono>.
+displayed using <pre>.
 
 =cut
 
@@ -1582,7 +1614,7 @@ Set($PlainTextPre, 0);
 
 Set C<$PlainTextMono> to 1 to use monospaced font and preserve
 formatting; unlike C<$PlainTextPre>, the text will wrap to fit width
-of the browser window.
+of the browser window; this option overrides C<$PlainTextPre>.
 
 =cut
 
@@ -1609,9 +1641,7 @@ provides two formats:
   link after the URL.
 
 * 'httpurl_overwrite': also detects URLs as 'httpurl' format, but
-  replaces the URL with a link and *adds spaces* into the text if it
-  is longer then 30 characters. This allows the browser to wrap long
-  URLs and avoid horizontal scrolling.
+  replaces the URL with a link.
 
 See F<share/html/Elements/MakeClicky> for documentation on how to add
 your own styles of link detection.
@@ -1678,11 +1708,29 @@ Set($RedistributeAutoGeneratedMessages, "privileged");
 
 Should rejection notes from approvals be sent to the requestors?
 
+=cut
+
+Set($ApprovalRejectionNotes, 1);
+
+=item C<$ForceApprovalsView>
+
+Should approval tickets only be viewed and modified through the standard
+approval interface?  Changing this setting to 1 will redirect any attempt to
+use the normal ticket display and modify page for approval tickets.
+
+For example, with this option set to 1 and an approval ticket #123:
+
+    /Ticket/Display.html?id=123
+
+is redirected to
+
+    /Approval/Display.html?id=123
+
 =back
 
 =cut
 
-Set($ApprovalRejectionNotes, 1);
+Set($ForceApprovalsView, 0);
 
 =head1 Extra security
 
@@ -1713,7 +1761,49 @@ This disables RT's clickjacking protection.
 
 Set($Framebusting, 1);
 
+=item C<$RestrictReferrer>
+
+If set to a false value, the HTTP C<Referer> (sic) header will not be
+checked to ensure that requests come from RT's own domain.  As RT allows
+for GET requests to alter state, disabling this opens RT up to
+cross-site request forgery (CSRF) attacks.
+
+=cut
+
+Set($RestrictReferrer, 1);
+
+=item C<$RestrictLoginReferrer>
+
+If set to a false value, RT will allow the user to log in from any link
+or request, merely by passing in C<user> and C<pass> parameters; setting
+it to a true value forces all logins to come from the login box, so the
+user is aware that they are being logged in.  The default is off, for
+backwards compatability.
+
+=cut
+
+Set($RestrictLoginReferrer, 0);
+
+=item C<$ReferrerWhitelist>
+
+This is a list of hostname:port combinations that RT will treat as being
+part of RT's domain. This is particularly useful if you access RT as
+multiple hostnames or have an external auth system that needs to
+redirect back to RT once authentication is complete.
+
+ Set(@ReferrerWhitelist, qw(www.example.com:443  www3.example.com:80));
+
+If the "RT has detected a possible cross-site request forgery" error is triggered
+by a host:port sent by your browser that you believe should be valid, you can copy
+the host:port from the error message into this list.
+
+=cut
+
+Set(@ReferrerWhitelist, qw());
+
 =back
+
+
 
 =head1 Authorization and user configuration
 
@@ -1780,10 +1870,9 @@ Set($AutoCreate, undef);
 
 =item C<$WebSessionClass>
 
-C<$WebSessionClass> is the class you wish to use for managing
-Sessions.  It defaults to use your SQL database, but if you are using
-MySQL 3.x and plans to use non-ascii Queue names, uncomment and add
-this line to F<RT_SiteConfig.pm> to prevent session corruption.
+C<$WebSessionClass> is the class you wish to use for managing sessions.
+It defaults to use your SQL database, except on Oracle, where it
+defaults to files on disk.
 
 =cut
 
@@ -1823,6 +1912,19 @@ connections.
 =cut
 
 Set($WebSecureCookies, 0);
+
+=item C<$WebHttpOnlyCookies>
+
+Default RT's session cookie to not being directly accessible to
+javascript.  The content is still sent during regular and AJAX requests,
+and other cookies are unaffected, but the session-id is less
+programmatically accessible to javascript.  Turning this off should only
+be necessary in situations with odd client-side authentication
+requirements.
+
+=cut
+
+Set($WebHttpOnlyCookies, 1);
 
 =item C<$MinimumPasswordLength>
 
@@ -2107,6 +2209,14 @@ be changed to this value.
 When an approval is denied, the status of depending tickets will
 be changed to this value.
 
+=item reminder_on_open
+
+When a reminder is opened, the status will be changed to this value.
+
+=item reminder_on_resolve
+
+When a reminder is resolved, the status will be changed to this value.
+
 =back
 
 =head2 Transitions between statuses and UI actions
@@ -2229,7 +2339,8 @@ For example:
 
 Unless there is an explicit mapping between statuses in two different
 lifecycles, you can not move tickets between queues with these
-lifecycles.  Such a mapping is defined as follows:
+lifecycles.  This is true even if the different lifecycles use the exact
+same set of statuses.  Such a mapping is defined as follows:
 
     __maps__ => {
         'from lifecycle -> to lifecycle' => {
@@ -2252,6 +2363,8 @@ Set(%Lifecycles,
             on_merge  => 'resolved',
             approved  => 'open',
             denied    => 'rejected',
+            reminder_on_open     => 'open',
+            reminder_on_resolve  => 'resolved',
         },
 
         transitions => {
@@ -2325,6 +2438,8 @@ Set(%Lifecycles,
         defaults => {
             on_create => 'new',
             on_merge => 'resolved',
+            reminder_on_open     => 'open',
+            reminder_on_resolve  => 'resolved',
         },
 
         transitions => {
@@ -2429,7 +2544,7 @@ Set(%AdminSearchResultFormat,
     Queues =>
         q{'<a href="__WebPath__/Admin/Queues/Modify.html?id=__id__">__id__</a>/TITLE:#'}
         .q{,'<a href="__WebPath__/Admin/Queues/Modify.html?id=__id__">__Name__</a>/TITLE:Name'}
-        .q{,__Description__,__Address__,__Priority__,__DefaultDueIn__,__Disabled__},
+        .q{,__Description__,__Address__,__Priority__,__DefaultDueIn__,'__Disabled__,__Lifecycle__},
 
     Groups =>
         q{'<a href="__WebPath__/Admin/Groups/Modify.html?id=__id__">__id__</a>/TITLE:#'}
@@ -2447,8 +2562,13 @@ Set(%AdminSearchResultFormat,
         .q{,__AppliedTo__, __FriendlyType__, __FriendlyPattern__},
 
     Scrips =>
-        q{'<a href="__WebPath__/__WebRequestPathDir__/Scrip.html?id=__id__&Queue=__QueueId__">__id__</a>/TITLE:#'}
-        .q{,'<a href="__WebPath__/__WebRequestPathDir__/Scrip.html?id=__id__&Queue=__QueueId__">__Description__</a>/TITLE:Description'}
+        q{'<a href="__WebPath__/Admin/Queues/Scrip.html?id=__id__&Queue=__QueueId__">__id__</a>/TITLE:#'}
+        .q{,'<a href="__WebPath__/Admin/Queues/Scrip.html?id=__id__&Queue=__QueueId__">__Description__</a>/TITLE:Description'}
+        .q{,__Stage__, __Condition__, __Action__, __Template__},
+
+    GlobalScrips =>
+        q{'<a href="__WebPath__/Admin/Global/Scrip.html?id=__id__">__id__</a>/TITLE:#'}
+        .q{,'<a href="__WebPath__/Admin/Global/Scrip.html?id=__id__">__Description__</a>/TITLE:Description'}
         .q{,__Stage__, __Condition__, __Action__, __Template__},
 
     Templates =>
@@ -2477,6 +2597,12 @@ convenience for developers, turns on several of development options
 that you most likely don't want in production:
 
 =over 4
+
+=item *
+
+Disables CSS and JS minification and concatenation.  Both CSS and JS
+will be instead be served as a number of individual smaller files,
+unchanged from how they are stored on disk.
 
 =item *
 

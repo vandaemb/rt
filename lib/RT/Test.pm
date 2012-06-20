@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -60,8 +60,6 @@ use File::Path qw(mkpath);
 use File::Spec;
 
 our @EXPORT = qw(is_empty diag parse_mail works fails);
-our ($port, $dbname);
-our @SERVERS;
 
 my %tmp = (
     directory => undef,
@@ -93,26 +91,8 @@ problem in Perl that hides the top-level optree from L<Devel::Cover>.
 
 =cut
 
-sub generate_port {
-    my $self = shift;
-    my $port = 1024 + int rand(10000) + $$ % 1024;
-
-    my $paddr = sockaddr_in( $port, inet_aton('localhost') );
-    socket( SOCK, PF_INET, SOCK_STREAM, getprotobyname('tcp') )
-      or die "socket: $!";
-    if ( connect( SOCK, $paddr ) ) {
-        close(SOCK);
-        return generate_port();
-    }
-    close(SOCK);
-
-    return $port;
-}
-
-BEGIN {
-    $port   = generate_port();
-    $dbname = $ENV{RT_TEST_PARALLEL}? "rt4test_$port" : "rt4test";
-};
+our $port;
+our @SERVERS;
 
 sub import {
     my $class = shift;
@@ -140,6 +120,8 @@ sub import {
 
     $class->bootstrap_tempdir;
 
+    $class->bootstrap_port;
+
     $class->bootstrap_plugins_paths( %args );
 
     $class->bootstrap_config( %args );
@@ -149,14 +131,14 @@ sub import {
 
     if (RT->Config->Get('DevelMode')) { require Module::Refresh; }
 
-    $class->bootstrap_db( %args );
-
     RT::InitPluginPaths();
+    RT::InitClasses();
+
+    $class->bootstrap_db( %args );
 
     __reconnect_rt()
         unless $args{nodb};
 
-    RT::InitClasses();
     RT::InitLogging();
 
     RT->Plugins;
@@ -211,6 +193,50 @@ sub db_requires_no_dba {
     return 1 if $db_type eq 'SQLite';
 }
 
+sub bootstrap_port {
+    my $class = shift;
+
+    my %ports;
+
+    # Determine which ports are in use
+    use Fcntl qw(:DEFAULT :flock);
+    my $portfile = "$tmp{'directory'}/../ports";
+    sysopen(PORTS, $portfile, O_RDWR|O_CREAT)
+        or die "Can't write to ports file $portfile: $!";
+    flock(PORTS, LOCK_EX)
+        or die "Can't write-lock ports file $portfile: $!";
+    $ports{$_}++ for split ' ', join("",<PORTS>);
+
+    # Pick a random port, checking that the port isn't in our in-use
+    # list, and that something isn't already listening there.
+    {
+        $port = 1024 + int rand(10_000) + $$ % 1024;
+        redo if $ports{$port};
+
+        # There is a race condition in here, where some non-RT::Test
+        # process claims the port after we check here but before our
+        # server binds.  However, since we mostly care about race
+        # conditions with ourselves under high concurrency, this is
+        # generally good enough.
+        my $paddr = sockaddr_in( $port, inet_aton('localhost') );
+        socket( SOCK, PF_INET, SOCK_STREAM, getprotobyname('tcp') )
+            or die "socket: $!";
+        if ( connect( SOCK, $paddr ) ) {
+            close(SOCK);
+            redo;
+        }
+        close(SOCK);
+    }
+
+    $ports{$port}++;
+
+    # Write back out the in-use ports
+    seek(PORTS, 0, 0);
+    truncate(PORTS, 0);
+    print PORTS "$_\n" for sort {$a <=> $b} keys %ports;
+    close(PORTS) or die "Can't close ports file: $!";
+}
+
 sub bootstrap_tempdir {
     my $self = shift;
     my ($test_dir, $test_file) = ('t', '');
@@ -239,6 +265,7 @@ sub bootstrap_config {
     open( my $config, '>', $tmp{'config'}{'RT'} )
         or die "Couldn't open $tmp{'config'}{'RT'}: $!";
 
+    my $dbname = $ENV{RT_TEST_PARALLEL}? "rt4test_$port" : "rt4test";
     print $config qq{
 Set( \$WebDomain, "localhost");
 Set( \$WebPort,   $port);
@@ -382,7 +409,11 @@ sub bootstrap_db {
         $args{$forceopt}=1;
     }
 
-    return if $args{nodb};
+    # Short-circuit the rest of ourselves if we don't want a db
+    if ($args{nodb}) {
+        __drop_database();
+        return;
+    }
 
     my $db_type = RT->Config->Get('DatabaseType');
     __create_database();
@@ -529,6 +560,13 @@ sub __drop_database {
         RT::Handle->SystemDSN,
         $ENV{RT_DBA_USER}, $ENV{RT_DBA_PASSWORD}
     );
+
+    # We ignore errors intentionally by not checking the return value of
+    # DropDatabase below, so let's also suppress DBI's printing of errors when
+    # we overzealously drop.
+    local $dbh->{PrintError} = 0;
+    local $dbh->{PrintWarn} = 0;
+
     RT::Handle->DropDatabase( $dbh );
     $dbh->disconnect if $my_dbh;
 }
@@ -983,7 +1021,7 @@ sub send_via_mailgate {
 
     my ( $status, $error_message, $ticket )
         = RT::Interface::Email::Gateway( {%args, message => $message} );
-    return ( $status, $ticket->id );
+    return ( $status, $ticket ? $ticket->id : 0 );
 
 }
 
@@ -1249,8 +1287,10 @@ sub started_ok {
 
     require RT::Test::Web;
 
-    if ($rttest_opt{nodb}) {
-        die "you are trying to use a test web server without db, try use noinitialdata => 1 instead";
+    if ($rttest_opt{nodb} and not $rttest_opt{server_ok}) {
+        die "You are trying to use a test web server without a database. "
+           ."You may want noinitialdata => 1 instead. "
+           ."Pass server_ok => 1 if you know what you're doing.";
     }
 
 
@@ -1271,11 +1311,31 @@ sub test_app {
     my $self = shift;
     my %server_opt = @_;
 
-    require RT::Interface::Web::Handler;
-    my $app = RT::Interface::Web::Handler->PSGIApp;
+    my $app;
+
+    my $warnings = "";
+    open( my $warn_fh, ">", \$warnings );
+    local *STDERR = $warn_fh;
+
+    if ($server_opt{variant} and $server_opt{variant} eq 'rt-server') {
+        $app = do {
+            my $file = "$RT::SbinPath/rt-server";
+            my $psgi = do $file;
+            unless ($psgi) {
+                die "Couldn't parse $file: $@" if $@;
+                die "Couldn't do $file: $!"    unless defined $psgi;
+                die "Couldn't run $file"       unless $psgi;
+            }
+            $psgi;
+        };
+    } else {
+        require RT::Interface::Web::Handler;
+        $app = RT::Interface::Web::Handler->PSGIApp;
+    }
 
     require Plack::Middleware::Test::StashWarnings;
-    $app = Plack::Middleware::Test::StashWarnings->wrap($app);
+    my $stashwarnings = Plack::Middleware::Test::StashWarnings->new;
+    $app = $stashwarnings->wrap($app);
 
     if ($server_opt{basic_auth}) {
         require Plack::Middleware::Auth::Basic;
@@ -1287,6 +1347,10 @@ sub test_app {
             }
         );
     }
+
+    close $warn_fh;
+    $stashwarnings->add_warning( $warnings ) if $warnings;
+
     return $app;
 }
 
@@ -1319,7 +1383,8 @@ sub start_plack_server {
         my $Tester = Test::Builder->new;
         $Tester->ok(1, "started plack server ok");
 
-        __reconnect_rt();
+        __reconnect_rt()
+            unless $rttest_opt{nodb};
         return ("http://localhost:$port", RT::Test::Web->new);
     }
 
@@ -1477,6 +1542,23 @@ END {
 
     if ( $ENV{RT_TEST_PARALLEL} && $created_new_db ) {
         __drop_database();
+    }
+
+    # Drop our port from t/tmp/ports; do this after dropping the
+    # database, as our port lock is also a lock on the database name.
+    if ($port) {
+        my %ports;
+        my $portfile = "$tmp{'directory'}/../ports";
+        sysopen(PORTS, $portfile, O_RDWR|O_CREAT)
+            or die "Can't write to ports file $portfile: $!";
+        flock(PORTS, LOCK_EX)
+            or die "Can't write-lock ports file $portfile: $!";
+        $ports{$_}++ for split ' ', join("",<PORTS>);
+        delete $ports{$port};
+        seek(PORTS, 0, 0);
+        truncate(PORTS, 0);
+        print PORTS "$_\n" for sort {$a <=> $b} keys %ports;
+        close(PORTS) or die "Can't close ports file: $!";
     }
 }
 

@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -52,15 +52,19 @@ use strict;
 use warnings;
 
 use base qw(Test::WWW::Mechanize);
+use Scalar::Util qw(weaken);
 
-require RT::Test;
+BEGIN { require RT::Test; }
 require Test::More;
+
+my $instance;
 
 sub new {
     my ($class, @args) = @_;
 
     push @args, app => $RT::Test::TEST_APP if $RT::Test::TEST_APP;
-    my $self = $class->SUPER::new(@args);
+    my $self = $instance = $class->SUPER::new(@args);
+    weaken $instance;
     $self->cookie_jar(HTTP::Cookies->new);
 
     return $self;
@@ -100,6 +104,7 @@ sub login {
         Test::More::diag("error: page has no Logout");
         return 0;
     }
+    RT::Interface::Web::EscapeUTF8(\$user);
     unless ( $self->content =~ m{<span class="current-user">\Q$user\E</span>}i ) {
         Test::More::diag("Page has no user name");
         return 0;
@@ -336,11 +341,44 @@ sub custom_field_input {
     return $res;
 }
 
+sub check_links {
+    my $self = shift;
+    my %args = @_;
+
+    my %has = map {$_ => 1} @{ $args{'has'} };
+    my %has_no = map {$_ => 1} @{ $args{'has_no'} };
+
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+    my @found;
+
+    my @links = $self->followable_links;
+    foreach my $text ( grep defined && length, map $_->text, @links ) {
+        push @found, $text if $has_no{ $text };
+        delete $has{ $text };
+    }
+    if ( @found || keys %has ) {
+        Test::More::ok( 0, "expected links" );
+        Test::More::diag( "didn't expect, but found: ". join ', ', map "'$_'", @found )
+            if @found;
+        Test::More::diag( "didn't find, but expected: ". join ', ', map "'$_'", keys %has )
+            if keys %has;
+        return 0;
+    }
+    return Test::More::ok( 1, "expected links" );
+}
+
 sub DESTROY {
     my $self = shift;
     if ( !$RT::Test::Web::DESTROY++ ) {
         $self->no_warnings_ok;
     }
+}
+
+END {
+    return unless $instance;
+    return if RT::Test->builder->{Original_Pid} != $$;
+    $instance->no_warnings_ok if !$RT::Test::Web::DESTROY++;
 }
 
 1;

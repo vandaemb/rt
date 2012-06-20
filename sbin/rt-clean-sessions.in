@@ -3,7 +3,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -112,7 +112,8 @@ RT::InitLogging();
 
 require RT::Interface::Web::Session;
 
-if( $opt{'older'} or my $alogoff = int RT->Config->Get('AutoLogoff') ) {
+my $alogoff = int RT->Config->Get('AutoLogoff');
+if ( $opt{'older'} or $alogoff ) {
     my $min;
     foreach ($alogoff*60, $opt{'older'}) {
         next unless $_;

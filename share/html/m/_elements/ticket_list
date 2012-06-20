@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -80,7 +80,7 @@ if ($page > 1 && ! @{$collection->ItemsArrayRef||[]}) {
 
 </%init>
 <&| /m/_elements/wrapper, title => 
-loc("Found [quant,_1,ticket]",$collection->Count) &>
+loc("Found [quant,_1,ticket]",$collection->CountAll) &>
 <&|/Widgets/TitleBox, class => 'search'
 &>
 <ul class="ticketlist">

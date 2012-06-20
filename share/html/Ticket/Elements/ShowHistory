@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2011 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2012 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -60,18 +60,22 @@ if ($ShowDisplayModes or $ShowTitle) {
     if ($ShowDisplayModes) {
         $titleright = '';
         
+        my $open_all  = $m->interp->apply_escapes( loc("Show all quoted text"), 'j' );
+        my $open_html = $m->interp->apply_escapes( loc("Show all quoted text"), 'h' );
+        my $close_all = $m->interp->apply_escapes( loc("Hide all quoted text"), 'j' );
+        $titleright .=    '<a href="#" data-direction="open" '
+                        . qq{onclick="return toggle_all_folds(this, $open_all, $close_all);"}
+                        . ">$open_html</a> &mdash; ";
+
         if ($ShowHeaders) {
             $titleright .= qq{<a href="$URIFile?id=} .
                            $Ticket->id.qq{">} .
-                           loc("Brief headers") .
-                           qq{</a> &mdash; };
-            $titleright .= q[<span class="selected">] . loc("Full headers") . "</span>";
-        }
-        else {
-            $titleright .= q[<span class="selected">] . loc("Brief headers") . "</span> &mdash; ";
+                           loc("Show brief headers") .
+                           qq{</a>};
+        } else {
             $titleright .= qq{<a href="$URIFile?ShowHeaders=1;id=} .
                            $Ticket->id.qq{">} .
-                           loc("Full headers") .
+                           loc("Show full headers") .
                            qq{</a>};
         }
     }
