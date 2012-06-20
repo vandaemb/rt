@@ -73,3 +73,9 @@ check( $_, shebang => 1, exec => 1, warnings => 1, strict => 1 )
 
 check( $_, shebang => 1, exec => 1, warnings => 1, strict => 1 )
     for grep {m{^devel/tools/} and not m{\.conf$}} @files;
+
+check( $_, exec => -1 )
+    for grep {m{^share/} and not m{\.(png|gif|jpe?g)$}} @files;
+
+check( $_, exec => -1 )
+    for grep {m{^t/data/}} @files;
