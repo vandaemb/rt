@@ -356,7 +356,7 @@ sub DecodeMIMEWordsToEncoding {
             # confuse us a lot, so only quote it if it isn't quoted
             # already.
             $enc_str = qq{"$enc_str"}
-                if $enc_str =~ /[,;]/
+                if $enc_str =~ /[()<>\[\]:;@\\,.]/
                 and $enc_str !~ /^".*"$/
                 and (!$field || $field =~ /^(?:To$|From$|B?Cc$|Content-)/i);
 
