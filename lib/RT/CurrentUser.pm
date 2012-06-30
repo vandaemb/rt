@@ -242,7 +242,9 @@ sub loc {
     if (@_ == 1) {
         # pre-scan the lexicon hashes to return _AUTO keys verbatim,
         # to keep locstrings containing '[' and '~' from tripping over Maketext
-        return $_[0] unless grep exists $_->{$_[0]}, @{ $handle->_lex_refs };
+        my $unescaped = $_[0];
+        $unescaped =~ s!~(.)!$1!g;
+        return $unescaped unless grep exists $_->{$_[0]}, @{ $handle->_lex_refs };
     }
 
     return $handle->maketext(@_);
