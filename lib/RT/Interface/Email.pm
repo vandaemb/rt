@@ -1433,7 +1433,7 @@ sub Gateway {
     }
     # }}}
 
-    $args{'ticket'} ||= ParseTicketId( $Subject );
+    $args{'ticket'} ||= ParseTicketId( $Subject, $Message );
 
     $SystemTicket = RT::Ticket->new( RT->SystemUser );
     $SystemTicket->Load( $args{'ticket'} ) if ( $args{'ticket'} ) ;
