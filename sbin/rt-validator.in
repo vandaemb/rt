@@ -475,7 +475,7 @@ push @CHECKS, 'CGM vs. GM' => sub {
             my $cgm = create_record( 'CachedGroupMembers',
                 GroupId => $id, MemberId => $id,
                 ImmediateParentId => $id, Via => undef,
-                Disabled => $g->Disabled,
+                Disabled => $g->Disabled || 0,
             );
             update_records( "CachedGroupMembers", { id => $cgm }, { Via => $cgm } );
         },
