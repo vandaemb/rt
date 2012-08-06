@@ -371,13 +371,13 @@ sub Content {
         }
 
         if ( $max > 76 ) {
+            use Text::Quoted;
             require Text::Wrapper;
-            my $wrapper = Text::Wrapper->new(
-                columns    => $args{'Wrap'},
-                body_start => ( $max > 70 * 3 ? '   ' : '' ),
-                par_start  => ''
-            );
-            $content = $wrapper->wrap($content);
+
+            my $structure = extract($content);
+            $content = $self->QuoteWrap(content_ref => $structure,
+                                        cols => $args{'Wrap'},
+                                        max => $max );
         }
 
         $content =~ s/^/> /gm;
@@ -388,6 +388,51 @@ sub Content {
     return ($content);
 }
 
+=head2 QuoteWrap PARAMHASH
+
+Wrap the contents of transactions based on Wrap settings, maintaining
+the quote character from the original.
+
+=cut
+
+sub QuoteWrap {
+    my $self = shift;
+    my %args = @_;
+    my $ref = $args{content_ref};
+    my $final_string;
+
+    if ( ref $ref eq 'ARRAY' ){
+        foreach my $array (@$ref){
+            $final_string .= $self->QuoteWrap(content_ref => $array,
+                                              cols => $args{cols},
+                                              max => $args{max} );
+        }
+    }
+    elsif ( ref $ref eq 'HASH' ){
+        return $ref->{quoter} . "\n" if $ref->{empty}; # Blank line
+
+        my $col = $args{cols} - (length $ref->{quoter});
+        my $wrapper = Text::Wrapper->new(
+                         columns    => $col,
+                         body_start => ( $args{max} > 70 * 3 ? '   ' : '' ),
+                         par_start  => '' );
+
+        my $tmp = join ' ', split /\n/, $ref->{text};
+        my $wrap = $wrapper->wrap($tmp);
+        my $quoter = $ref->{quoter};
+
+        # Only add the space if actually quoting
+        $quoter .= ' ' if length $quoter;
+        $wrap =~ s/^(.*)$/$quoter$1/mg;
+
+        return $wrap;
+    }
+    else{
+        $RT::Logger->warning("Can't apply quoting with $ref");
+        return;
+    }
+    return $final_string;
+}
 
 
 =head2 Addresses
