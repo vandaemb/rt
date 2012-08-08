@@ -1066,6 +1066,8 @@ sub CurrentUserCanSee {
         $cf->SetContextObject( $self->Object );
         $cf->Load( $cf_id );
         return 0 unless $cf->CurrentUserHasRight('SeeCustomField');
+    } elsif ($self->{ _readable }) {
+        return 1;
     }
     # Defer to the object in question
     return $self->Object->CurrentUserCanSee("Transaction");
